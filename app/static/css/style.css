@@ -159,6 +159,11 @@ body {
   cursor: pointer;
   background: rgba(0, 243, 255, 0.02);
   transition: all 0.2s ease;
+  position: relative;
+}
+
+.upload-box > * {
+  pointer-events: none;
 }
 
 .upload-box:hover {
