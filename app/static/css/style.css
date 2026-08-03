@@ -160,12 +160,38 @@ body {
   background: rgba(0, 243, 255, 0.02);
   transition: all 0.2s ease;
   position: relative;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.upload-box input[type="file"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.upload-box > *:not(input) {
+  pointer-events: none;
 }
 
 .upload-box:hover {
   background: rgba(0, 243, 255, 0.08);
   border-color: var(--term-amber);
+}
+
+.upload-box.dragover {
+  background: rgba(0, 243, 255, 0.15);
+  border-color: var(--term-green);
+  border-style: solid;
 }
 
 .upload-icon {
@@ -457,131 +483,46 @@ body {
 }
 
 /* Terminal sliding activity indicator - blade runner back-and-forth */
+
+/* ============================================
+   FUTURISTIC PULL-UP TERMINAL CONSOLE
+   ============================================ */
+
+.footer-terminal {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9000;
+  pointer-events: none;
+}
+
 .terminal-active-bar {
   position: absolute;
   top: 0;
   left: 0;
   height: 2px;
+  width: 100%;
   background: linear-gradient(90deg, transparent, var(--term-cyan), var(--term-green), var(--term-cyan), transparent);
   background-size: 300% 100%;
   animation: slide-bar-blade 2s ease-in-out infinite alternate;
-  border-radius: 0 0 2px 2px;
-  transition: width 0.3s ease;
-}
-
-@keyframes slide-bar-blade {
-  0% {
-    background-position: 0% 50%;
-    left: 0;
-    width: 60%;
-  }
-  100% {
-    background-position: 100% 50%;
-    left: 40%;
-    width: 60%;
-  }
-}
-
-.footer-terminal {
-  position: relative;
-}
-
-/* Prevent text selection on terminal chrome, allow in body */
-.terminal-resize-handle,
-.footer-terminal-header {
-  user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-}
-
-.footer-terminal-body {
-  user-select: text;
-  -webkit-user-select: text;
-  -moz-user-select: text;
-  -ms-user-select: text;
-}
-
-/* Button loading state */
-.btn.loading {
-  position: relative;
-  pointer-events: none;
-  opacity: 0.7;
-}
-
-.btn.loading::after {
-  content: "";
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(0,0,0,0.3);
-  border-top-color: #000;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  margin-left: 8px;
-  vertical-align: middle;
-}
-
-.btn-secondary.loading::after {
-  border-color: rgba(0, 243, 255, 0.3);
-  border-top-color: var(--term-cyan);
-}
-
-/* Gauge Widget */
-.gauge-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 0.5rem 0;
-  margin-bottom: 0.75rem;
-}
-
-.gauge-svg {
-  width: 140px;
-  height: 95px;
-}
-
-.gauge-fill {
-  transition: stroke-dasharray 0.8s ease, stroke 0.5s ease;
-}
-
-.gauge-value {
-  transition: fill 0.5s ease;
-}
-
-/* Spinning Gear Indicator */
-.system-gear {
-  position: fixed;
-  bottom: 10px;
-  right: 10px;
-  z-index: 9500;
-  width: 24px;
-  height: 24px;
-  color: var(--term-amber);
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
 }
 
-.system-gear.active {
+.terminal-active-bar.active {
   opacity: 1;
-  animation: spin-gear 2s linear infinite;
 }
 
-@keyframes spin-gear {
-  to { transform: rotate(360deg); }
-}
-
-/* Light Beam across terminal top */
 .terminal-light-beam {
   position: absolute;
   top: 0;
   left: 0;
   height: 1px;
-  width: 80px;
+  width: 100px;
   background: linear-gradient(90deg, transparent, var(--term-cyan), transparent);
   opacity: 0;
-  transition: opacity 0.3s ease;
   pointer-events: none;
 }
 
@@ -590,83 +531,157 @@ body {
   animation: beam-slide 2.5s ease-in-out infinite alternate;
 }
 
-@keyframes beam-slide {
-  0% { left: 0; }
-  100% { left: calc(100% - 80px); }
-}
-
-/* Resizable Bottom Footer Terminal Console */
-.footer-terminal {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 160px;
-  min-height: 90px;
-  max-height: 80vh;
-  background: #000408;
-  border-top: 2px solid var(--term-cyan);
-  box-shadow: 0 -5px 25px rgba(0, 243, 255, 0.3);
-  z-index: 9000;
-  display: flex;
-  flex-direction: column;
-  transition: height 0.05s ease-out;
-}
-
-.terminal-resize-handle {
-  height: 12px;
-  background: #020b14;
-  border-bottom: 1px solid var(--term-border);
-  cursor: ns-resize;
+.terminal-pull-handle {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.65rem;
-  color: var(--term-cyan);
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: rgba(4, 8, 13, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--term-border);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.2s ease;
+}
+
+.terminal-pull-handle:hover {
+  background: rgba(4, 8, 13, 0.95);
+}
+
+.pull-indicator {
+  width: 40px;
+  height: 4px;
+  background: var(--term-cyan);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--term-cyan);
+}
+
+.pull-text {
+  font-size: 0.7rem;
+  color: var(--text-dim);
   letter-spacing: 2px;
   user-select: none;
 }
 
-.terminal-resize-handle:hover {
-  background: var(--term-cyan);
-  color: #000;
-  font-weight: 800;
+.pull-chevron {
+  font-size: 0.7rem;
+  color: var(--term-cyan);
+  transition: transform 0.3s ease;
+  user-select: none;
 }
 
-.footer-terminal-header {
-  background: #020810;
-  border-bottom: 1px solid var(--term-border);
-  padding: 0.35rem 1rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--term-green);
+.terminal-expanded .pull-chevron {
+  transform: rotate(180deg);
+}
+
+.terminal-content {
+  max-height: 0;
+  overflow: hidden;
+  background: rgba(4, 8, 13, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--term-border);
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+}
+
+.footer-terminal:hover .terminal-content,
+.terminal-expanded .terminal-content {
+  max-height: 60vh;
+}
+
+.terminal-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: rgba(2, 5, 8, 0.6);
+  border-bottom: 1px solid var(--term-border);
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.terminal-dots .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.terminal-dots .dot.red { background: #ff5f57; }
+.terminal-dots .dot.yellow { background: #febc2e; }
+.terminal-dots .dot.green { background: #28c840; }
+
+.terminal-title {
+  font-size: 0.75rem;
+  color: var(--term-green);
+  font-weight: 700;
   letter-spacing: 1px;
 }
 
-.footer-terminal-body {
-  flex: 1;
-  padding: 0.65rem 1rem;
-  overflow-y: auto;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.8rem;
-  color: var(--term-green);
-  line-height: 1.4;
+.terminal-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.65rem;
+  color: var(--term-cyan);
 }
 
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--term-border);
+}
+
+.status-dot.active {
+  background: var(--term-green);
+  box-shadow: 0 0 6px var(--term-green);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.terminal-body {
+  padding: 0.75rem 1rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-family: 'Share Tech Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  color: var(--term-green);
+  line-height: 1.5;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.terminal-body::-webkit-scrollbar { width: 6px; }
+.terminal-body::-webkit-scrollbar-track { background: transparent; }
+.terminal-body::-webkit-scrollbar-thumb { background: var(--term-border); border-radius: 3px; }
+.terminal-body::-webkit-scrollbar-thumb:hover { background: var(--term-cyan); }
+
 .log-line {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
+  opacity: 0.9;
+  transition: opacity 0.2s;
+}
+
+.log-line:hover {
+  opacity: 1;
+  background: rgba(0, 243, 255, 0.03);
 }
 
 .log-time {
   color: var(--term-amber);
-  margin-right: 0.5rem;
+  margin-right: 0.4rem;
+  font-size: 0.72rem;
 }
 
 .log-caller {
   color: var(--term-cyan);
   font-weight: 700;
-  margin-right: 0.5rem;
+  margin-right: 0.4rem;
+  font-size: 0.7rem;
 }

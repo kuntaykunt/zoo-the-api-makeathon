@@ -21,14 +21,14 @@ function showTerminalActivity(durationMs = 3000) {
   const bar = document.getElementById("terminalActiveBar");
   const beam = document.getElementById("terminalLightBeam");
   const gear = document.getElementById("systemGear");
-  if (bar) { bar.style.display = "block"; bar.style.width = "100%"; }
+  if (bar) bar.classList.add("active");
   if (beam) beam.classList.add("active");
   if (gear) gear.classList.add("active");
 
   clearTimeout(terminalActivityTimeout);
   clearTimeout(systemActiveTimeout);
   terminalActivityTimeout = setTimeout(() => {
-    if (bar) { bar.style.display = "none"; bar.style.width = "0%"; }
+    if (bar) bar.classList.remove("active");
     if (beam) beam.classList.remove("active");
   }, durationMs);
   systemActiveTimeout = setTimeout(() => {
@@ -39,15 +39,25 @@ function showTerminalActivity(durationMs = 3000) {
 document.addEventListener("DOMContentLoaded", () => {
   initUploadBox();
   initActionButtons();
-  initResizableTerminal();
+  initTerminalPull();
 
   const explodeBtn = document.getElementById("explodeBtn");
   if (explodeBtn) explodeBtn.style.display = "none";
 
-  streamLog("AGENT_HARNESS", "Initialized Agentic Loop Engine v2.5.");
-  streamLog("AGENT_HARNESS", "GATING STATUS: 'EXPLODE TO MANUFACTURE' capability LOCKED.");
+  streamLog("AGENT_HARNESS", "Initialized Agentic Loop Engine v2.6.");
+  streamLog("AGENT_HARNESS", "GATING STATUS: 'MANUFACTURING REVIEW' capability LOCKED.");
   streamLog("AGENT_HARNESS", "Prerequisites: 1. Drawing Inspection -> 2. Title Block Audit -> 3. Zoo API Verification.");
 });
+
+function initTerminalPull() {
+  const handle = document.getElementById("terminalPullHandle");
+  const terminal = document.getElementById("footerTerminal");
+  if (!handle || !terminal) return;
+
+  handle.addEventListener("click", () => {
+    terminal.classList.toggle("terminal-expanded");
+  });
+}
 
 function initResizableTerminal() {
   const handle = document.getElementById("terminalResizeHandle");
@@ -87,27 +97,31 @@ function initUploadBox() {
 
   if (!dropzone || !fileInput) return;
 
-  // <label for="fileInput"> handles click natively — no JS click listener needed
+  // Native file input (positioned absolutely over the box) handles click
 
   dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dropzone.classList.add("dragover");
   });
 
-  dropzone.addEventListener("dragleave", () => {
+  dropzone.addEventListener("dragleave", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     dropzone.classList.remove("dragover");
   });
 
   dropzone.addEventListener("drop", (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dropzone.classList.remove("dragover");
-    if (e.dataTransfer.files.length > 0) {
+    if (e.dataTransfer && e.dataTransfer.files.length > 0) {
       handleFileUpload(e.dataTransfer.files[0]);
     }
   });
 
   fileInput.addEventListener("change", (e) => {
-    if (e.target.files.length > 0) {
+    if (e.target.files && e.target.files.length > 0) {
       handleFileUpload(e.target.files[0]);
     }
   });
