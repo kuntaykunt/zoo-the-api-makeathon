@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>COMMAND TERMINAL // ZOO CAD & DFMA AGENT</title>
-  <meta name="description" content="Star Wars 80s Command Terminal Agent for Technical Drawing to KCL 3D CAD & DFMA Manufacturing Operations.">
+  <title>COMMAND TERMINAL // ZOO CAD & KNOWLEDGE PIPELINE</title>
+  <meta name="description" content="Technical Drawing Ingestion to KCL CAD Intelligence, Pozlar Decomposition, and DFMA Manufacturing Knowledge.">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -13,33 +13,33 @@
   <header class="app-header">
     <div class="logo-container">
       <div class="logo-badge">SYSTEM v2.4</div>
-      <div class="logo-title">ZOO CAD & DFMA COMMAND TERMINAL</div>
+      <div class="logo-title">ZOO CAD & MANUFACTURING KNOWLEDGE STUDIO</div>
     </div>
     
     <div class="status-pills">
       <div class="pill online" id="evalStatusPill">
-        <span class="dot"></span> AGENT: ONLINE
+        <span class="dot"></span> AGENT: READY
       </div>
       <div class="pill online">
         <span class="dot"></span> ZOO API: ONLINE
       </div>
       <div class="pill">
-        🤖 QWEN-VL AGENT: ACTIVE
+        🤖 QWEN-VL VISION: ACTIVE
       </div>
     </div>
   </header>
 
-  <!-- Main Terminal Studio Grid -->
+  <!-- Main 2-Column High-Readability Studio Grid -->
   <main class="studio-grid">
 
-    <!-- PANEL 1: Drawing Input, Antet (Title Block) & Agentic Console -->
+    <!-- COLUMN 1: Ingestion, Title Block (Antet) & KCL Synthesis -->
     <section class="panel">
       <div class="panel-header">
-        <div class="panel-title">[ 01 // TECHNICAL DRAWING INSPECTION ]</div>
+        <div class="panel-title">[ 01 // DRAWING INGESTION & KCL SYNTHESIS ]</div>
       </div>
       <div class="panel-body">
         
-        <!-- Drag and Drop Box (Hides after upload) -->
+        <!-- Drag & Drop Box (Hides on upload) -->
         <div class="upload-box" id="dropzone">
           <div class="upload-icon">📡</div>
           <div class="upload-title">INITIALIZE DRAWING INGESTION</div>
@@ -47,127 +47,67 @@
           <input type="file" id="fileInput" accept="image/*,application/pdf" style="display: none;">
         </div>
 
-        <!-- Uploaded File Card (Appears after file dropped, disables continuous drop) -->
+        <!-- Uploaded File Card (Shows after upload) -->
         <div class="uploaded-file-card" id="uploadedFileCard" style="display: none;">
           <span id="fileNameText">📄 File Uploaded</span>
-          <button class="btn btn-secondary" id="resetFileBtn" style="padding: 0.25rem 0.5rem; font-size: 0.65rem;">
+          <button class="btn btn-secondary" id="resetFileBtn" style="padding: 0.3rem 0.6rem; font-size: 0.7rem;">
             🔄 CHANGE FILE
           </button>
         </div>
 
-        <!-- Agentic Reasoning Console -->
-        <div>
-          <div style="font-size: 0.7rem; font-weight: 700; color: var(--term-green); margin-bottom: 0.35rem; letter-spacing: 1px;">
-            > AGENTIC INSPECTION LOGS
-          </div>
-          <div class="terminal-console" id="terminalConsole">
-            <div class="terminal-line">[SYSTEM] Terminal initialized. Awaiting technical drawing file upload...</div>
-          </div>
-        </div>
-
-        <!-- Title Block (Antet) Summary Card -->
+        <!-- Title Block (Antet) Verification Card -->
         <div class="antet-card" id="antetCard" style="display: none;">
-          <div class="antet-title">📋 TITLE BLOCK (ANTET) SUMMARY</div>
+          <div class="antet-title">📋 TITLE BLOCK (ANTET) VERIFICATION</div>
           <div class="antet-grid" id="antetGrid"></div>
         </div>
 
-        <!-- Gatekeeper Q&A Card -->
+        <!-- Parameter Gatekeeper Audit Card -->
         <div class="antet-card" id="gatekeeperCard" style="display: none; border-color: var(--term-amber);">
           <div class="antet-title" style="color: var(--term-amber);">⚠️ PARAMETER AUDIT & VERIFICATION</div>
-          <div id="questionsContainer" style="margin-bottom: 0.75rem;"></div>
-          <button class="btn" id="submitAnswersBtn" style="width: 100%;">
+          <div id="questionsContainer"></div>
+          <button class="btn" id="submitAnswersBtn" style="width: 100%; margin-top: 0.5rem;">
             <span>⚡ CONFIRM PARAMETERS & SYNTHESIZE KCL</span>
           </button>
         </div>
 
-        <!-- KCL Code Display -->
+        <!-- Synthesized KCL Code Display -->
         <div>
-          <div style="font-size: 0.7rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.35rem; letter-spacing: 1px;">
-            💻 KITTYCAD KCL SYNTHESIS
+          <div style="font-size: 0.8rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.4rem; letter-spacing: 1px;">
+            💻 KITTYCAD KCL DEFINITION
           </div>
-          <div class="code-editor" id="kclEditor">// Upload technical drawing to generate KittyCAD Language (KCL) code...</div>
+          <div class="code-editor" id="kclEditor">// Upload technical drawing to synthesize KittyCAD Language (KCL) code...</div>
         </div>
-
-        <!-- Exploded Parts Container -->
-        <div id="explodedPartsContainer" style="display: none; flex-direction: column; gap: 0.5rem;"></div>
 
       </div>
     </section>
 
-    <!-- PANEL 2: Interactive 3D Viewport & Zoo Studio Gateway -->
-    <section class="viewport-panel">
+    <!-- COLUMN 2: Knowledge, Exploded Positions (Pozlar) & Manufacturing Operations -->
+    <section class="panel">
       <div class="panel-header">
-        <div class="panel-title">[ 02 // ZOO ENGINE 3D ENVIRONMENT ]</div>
-        <button class="btn btn-secondary" id="explodeBtn" style="display: none; padding: 0.35rem 0.75rem; border-color: var(--term-amber); color: var(--term-amber);">
+        <div class="panel-title">[ 02 // ASSEMBLY POSITIONS (POZLAR) & DFMA KNOWLEDGE ]</div>
+        <button class="btn btn-secondary" id="explodeBtn" style="padding: 0.4rem 0.85rem; border-color: var(--term-amber); color: var(--term-amber); font-size: 0.75rem;">
           <span>💥 EXPLODE TO MANUFACTURE</span>
         </button>
       </div>
 
-      <div class="viewport-canvas">
-        
-        <!-- Empty State Notice when 3D model is not yet generated -->
-        <div class="empty-viewport-notice" id="emptyViewportNotice">
-          <div style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--term-cyan);">🛸</div>
-          <div style="font-size: 0.9rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.5rem; letter-spacing: 1.5px;">
-            AWAITING 3D CAD MODEL COMPILATION
-          </div>
-          <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 1.25rem;">
-            No active 3D geometry compiled yet. Complete drawing inspection to synthesize KCL code.
-          </div>
-          <a href="https://zoo.dev/studio" target="_blank" class="btn btn-secondary" style="text-decoration: none; font-size: 0.7rem; display: inline-block;">
-            🚀 OPEN KITTYCAD ZOO STUDIO (ZOO.DEV)
-          </a>
-        </div>
-
-        <!-- Compiled 3D Model Image Viewport -->
-        <img id="viewportImg" src="" alt="Zoo KCL 3D Render" class="render-img" style="display: none;">
-        
-        <div class="render-overlay-stats" id="modelStats" style="position: absolute; bottom: 1rem; left: 1rem; display: flex; gap: 0.5rem;"></div>
-      </div>
-    </section>
-
-    <!-- PANEL 3: DFMA & Manufacturing Agent -->
-    <section class="panel">
-      <div class="panel-header">
-        <div class="panel-title">[ 03 // DFMA & MANUFACTURING AGENT ]</div>
-      </div>
       <div class="panel-body">
         
-        <!-- Score Card -->
+        <!-- Manufacturability & Mass Summary Card -->
         <div class="score-badge" id="dfmaScore">
           <div>
-            <div style="font-size: 0.7rem; color: var(--text-dim);">MANUFACTURABILITY INDEX</div>
-            <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-main);">AWAITING MODEL INPUT</div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);">MANUFACTURABILITY INDEX</div>
+            <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">AWAITING DRAWING INPUT</div>
           </div>
           <div class="score-num">--%</div>
         </div>
 
-        <!-- Extended Volume / Mass / Time Metrics Card -->
+        <!-- Assembly Knowledge & Metrics -->
         <div id="dfmaMetrics"></div>
 
-        <!-- DFMA Constraint Checks -->
-        <div>
-          <div style="font-size: 0.7rem; font-weight: 700; color: var(--term-amber); margin-bottom: 0.35rem; letter-spacing: 1px;">
-            🔍 DFMA RULE AUDITS
-          </div>
-          <div id="dfmaWarnings" style="display: flex; flex-direction: column; gap: 0.35rem;">
-            <div class="stat-chip">Awaiting KCL compilation to run DFMA checks...</div>
-          </div>
-        </div>
-
-        <!-- Manufacturing Operations Routing -->
-        <div>
-          <div style="font-size: 0.7rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.5rem; letter-spacing: 1px;">
-            🏭 MANUFACTURING ROUTING & METRICS
-          </div>
-          <div id="dfmaOps" style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <div class="op-card">
-              <div class="op-header">
-                <span>STEP 1: FIBER LASER CONTOUR CUTTING</span>
-                <span style="color: var(--term-amber);">--s</span>
-              </div>
-              <div class="op-desc">Ingest drawing to generate step-by-step manufacturing routing.</div>
-            </div>
+        <!-- Positions (Pozlar) Breakdown Container -->
+        <div id="positionsContainer" style="display: flex; flex-direction: column; gap: 0.85rem;">
+          <div style="color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 2rem; border: 1px dashed var(--term-border);">
+            Ingest a drawing and click <strong>'EXPLODE TO MANUFACTURE'</strong> to decompose assembly into itemized positions (Pozlar) and step-by-step manufacturing routing.
           </div>
         </div>
 
@@ -175,6 +115,21 @@
     </section>
 
   </main>
+
+  <!-- Fixed Bottom Footer Terminal Console -->
+  <footer class="footer-terminal">
+    <div class="footer-terminal-header">
+      <span>> LIVE API CALLER & AGENT STREAM LOGS</span>
+      <span style="color: var(--term-cyan);">STATUS: STREAMING</span>
+    </div>
+    <div class="footer-terminal-body" id="footerTerminalLogs">
+      <div class="log-line">
+        <span class="log-time">[SYSTEM]</span>
+        <span class="log-caller">[LOGGER_INIT]</span>
+        <span>Live API Caller stream connected. Ready to log requests...</span>
+      </div>
+    </div>
+  </footer>
 
   <script src="/static/js/app.js"></script>
 </body>

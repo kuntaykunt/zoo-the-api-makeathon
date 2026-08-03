@@ -1,13 +1,13 @@
-// STAR WARS COMMAND TERMINAL // Zoo CAD Studio Controller
+// STAR WARS COMMAND TERMINAL // Zoo CAD & Knowledge Controller
 
 let currentEvalState = null;
 let currentKCLCode = "";
-let currentPartName = "Part";
-let currentUploadedFileName = "";
+let currentPartName = "Sheet Metal Support Bracket";
 
 document.addEventListener("DOMContentLoaded", () => {
   initUploadBox();
   initActionButtons();
+  streamLog("SYSTEM", "Initialized Live API Caller Terminal Logger. System ready.");
 });
 
 function initUploadBox() {
@@ -43,8 +43,6 @@ function initUploadBox() {
 }
 
 async function handleFileUpload(file) {
-  currentUploadedFileName = file.name;
-
   // 1. Hide Dropzone immediately to prevent continuous file drops
   const dropzone = document.getElementById("dropzone");
   const fileCard = document.getElementById("uploadedFileCard");
@@ -55,8 +53,8 @@ async function handleFileUpload(file) {
     document.getElementById("fileNameText").textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
   }
 
-  showTerminalLog("SYSTEM: Uploading technical drawing file...", "info");
-  showTerminalLog("AGENT: Invoking Qwen-VL Technical Inspection Agent v2.4...", "info");
+  streamLog("FILE_UPLOADER", `Received technical drawing file: '${file.name}'. Base64 encoding...`);
+  streamLog("QWEN_VL_AGENT", "POST /api/upload-drawing -> Transmitting image to Qwen-VL Vision API...");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -71,16 +69,21 @@ async function handleFileUpload(file) {
 
     const data = await res.json();
     currentEvalState = data;
-    currentPartName = data.title_block?.part_name || data.part_name || "CAD_Part";
+    currentPartName = data.title_block?.part_name || data.part_name || "Sheet Metal Support Bracket";
 
-    // 2. Render Agentic Trace & Title Block (Antet)
-    renderAgenticTrace(data.agentic_trace || []);
+    streamLog("QWEN_VL_AGENT", `HTTP 200 OK -> Analysis complete. Antet Detected: '${currentPartName}'.`);
+
+    // Stream trace logs
+    if (data.agentic_trace) {
+      data.agentic_trace.forEach(logMsg => streamLog("AGENT_TRACE", logMsg));
+    }
+
     renderTitleBlock(data.title_block || {});
     renderEvaluationGatekeeper(data);
 
   } catch (err) {
     console.error(err);
-    showTerminalLog(`ERROR: ${err.message}`, "error");
+    streamLog("ERROR", `Drawing inspection failure: ${err.message}`);
     alert("Error inspecting drawing: " + err.message);
   }
 }
@@ -96,21 +99,7 @@ function resetFileUpload() {
   if (gatekeeperCard) gatekeeperCard.style.display = "none";
   if (antetCard) antetCard.style.display = "none";
 
-  showTerminalLog("SYSTEM: Reset file input buffer.", "info");
-}
-
-function renderAgenticTrace(traceLogs) {
-  const consoleBox = document.getElementById("terminalConsole");
-  if (!consoleBox) return;
-
-  consoleBox.innerHTML = "";
-  traceLogs.forEach(log => {
-    const line = document.createElement("div");
-    line.className = "terminal-line";
-    line.textContent = log;
-    consoleBox.appendChild(line);
-  });
-  consoleBox.scrollTop = consoleBox.scrollHeight;
+  streamLog("SYSTEM", "Reset file ingestion buffer. Ready for new file.");
 }
 
 function renderTitleBlock(tb) {
@@ -137,22 +126,23 @@ function renderEvaluationGatekeeper(data) {
 
   if (!gatekeeperCard) return;
 
-  gatekeeperCard.style.display = "flex";
+  gatekeeperCard.style.display = "block";
 
   if (data.satisfies_requirements) {
-    evalStatusPill.className = "pill online";
-    evalStatusPill.innerHTML = `<span class="dot"></span> COMPLETENESS: VERIFIED (100%)`;
-    
-    // Auto synthesize KCL
+    if (evalStatusPill) {
+      evalStatusPill.className = "pill online";
+      evalStatusPill.innerHTML = `<span class="dot"></span> COMPLETENESS: VERIFIED (100%)`;
+    }
     submitAnswers();
-
   } else {
-    evalStatusPill.className = "pill";
-    evalStatusPill.style.color = "var(--term-amber)";
-    evalStatusPill.innerHTML = `⚠️ PARAMETERS MISSING // AUDIT REQUIRED`;
+    if (evalStatusPill) {
+      evalStatusPill.className = "pill";
+      evalStatusPill.style.color = "var(--term-amber)";
+      evalStatusPill.innerHTML = `⚠️ PARAMETERS MISSING // AUDIT REQUIRED`;
+    }
 
-    let html = `<div style="font-size: 0.75rem; color: var(--term-amber); margin-bottom: 0.5rem;">
-      [!] Qwen Vision AI detected missing title block parameters. Please verify/complete:
+    let html = `<div style="font-size: 0.8rem; color: var(--term-amber); margin-bottom: 0.65rem;">
+      [!] Qwen Vision AI detected missing title block parameters. Please confirm:
     </div>`;
 
     if (data.questions && data.questions.length > 0) {
@@ -188,8 +178,8 @@ async function submitAnswers() {
     });
   }
 
-  showTerminalLog("SYSTEM: Synthesizing KittyCAD Language (KCL) Code...", "info");
-  showTerminalLog("ZOO_ENGINE: Transmitting KCL payload to api.zoo.dev...", "info");
+  streamLog("KCL_SYNTHESIZER", "Synthesizing KittyCAD KCL definition based on verified parameters...");
+  streamLog("ZOO_API", "POST /api/answer-questions -> Transmitting KCL payload to Zoo Engine API...");
 
   try {
     const res = await fetch("/api/answer-questions", {
@@ -205,15 +195,17 @@ async function submitAnswers() {
     
     currentKCLCode = data.kcl_code;
     renderKCLCode(data.kcl_code);
-    renderZooCompileResult(data.zoo_compile);
     renderDFMAAgent(data.dfma_analysis);
 
-    document.getElementById("explodeBtn").style.display = "inline-flex";
-    showTerminalLog("SYSTEM: 3D CAD Compiled & DFMA Operations Evaluated Successfully.", "info");
+    streamLog("ZOO_API", "HTTP 200 OK -> KCL Payload validated by Zoo Engine.");
+    streamLog("DFMA_ENGINE", `Calculated Mass: ${data.dfma_analysis.mass_kg} kg | Cycle Time: ${data.dfma_analysis.total_cycle_time_min} min.`);
+
+    // Automatically trigger Explode to display positions & operations
+    handleExplodeAssembly();
 
   } catch (err) {
     console.error(err);
-    showTerminalLog(`ZOO_ERROR: ${err.message}`, "error");
+    streamLog("ZOO_ERROR", `KCL execution failed: ${err.message}`);
     alert("KCL Compilation error: " + err.message);
   }
 }
@@ -225,39 +217,15 @@ function renderKCLCode(code) {
   }
 }
 
-function renderZooCompileResult(zooRes) {
-  const emptyNotice = document.getElementById("emptyViewportNotice");
-  const renderImg = document.getElementById("viewportImg");
-  const statsBox = document.getElementById("modelStats");
-
-  // Show 3D render only when compiled
-  if (emptyNotice) emptyNotice.style.display = "none";
-  if (renderImg) {
-    renderImg.style.display = "block";
-    renderImg.src = (zooRes.render_url || "/static/renders/sample_3d_render.png") + "?t=" + new Date().getTime();
-  }
-
-  if (statsBox && zooRes.model_stats) {
-    const s = zooRes.model_stats;
-    statsBox.innerHTML = `
-      <div class="stat-chip">Volume: <strong>${s.volume_cm3} cm³</strong></div>
-      <div class="stat-chip">Mass: <strong>${s.mass_grams} g</strong></div>
-      <div class="stat-chip">Bounding: <strong>${s.bounding_box_mm.x}x${s.bounding_box_mm.y}x${s.bounding_box_mm.z} mm</strong></div>
-    `;
-  }
-}
-
 function renderDFMAAgent(dfma) {
   const scoreBox = document.getElementById("dfmaScore");
   const metricsBox = document.getElementById("dfmaMetrics");
-  const warningsBox = document.getElementById("dfmaWarnings");
-  const opsBox = document.getElementById("dfmaOps");
 
   if (scoreBox) {
     scoreBox.innerHTML = `
       <div>
-        <div style="font-size: 0.7rem; color: var(--text-dim);">MANUFACTURABILITY SCORE</div>
-        <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-green);">${dfma.manufacturability_status}</div>
+        <div style="font-size: 0.75rem; color: var(--text-dim);">MANUFACTURABILITY INDEX</div>
+        <div style="font-size: 0.85rem; font-weight: 700; color: var(--term-green);">${dfma.manufacturability_status}</div>
       </div>
       <div class="score-num">${dfma.dfma_score}%</div>
     `;
@@ -266,45 +234,27 @@ function renderDFMAAgent(dfma) {
   if (metricsBox) {
     metricsBox.innerHTML = `
       <div class="antet-card" style="border-color: var(--term-cyan);">
-        <div class="antet-title" style="color: var(--term-cyan);">📊 DFMA GEOMETRY & MATERIAL METRICS</div>
+        <div class="antet-title" style="color: var(--term-cyan);">📊 ASSEMBLY KNOWLEDGE & METRICS SUMMARY</div>
         <div class="antet-grid">
           <div class="antet-item">Material: <strong>${dfma.material}</strong></div>
           <div class="antet-item">Density: <strong>${dfma.material_density_g_cm3} g/cm³</strong></div>
           <div class="antet-item">Calc. Volume: <strong>${dfma.volume_cm3} cm³</strong></div>
           <div class="antet-item">Calc. Mass: <strong>${dfma.mass_kg} kg (${dfma.mass_grams} g)</strong></div>
-          <div class="antet-item">Total Cycle: <strong>${dfma.total_cycle_time_min} min (${dfma.total_cycle_time_hours} hrs)</strong></div>
-          <div class="antet-item">Total Setup: <strong>${dfma.total_setup_time_min} min</strong></div>
+          <div class="antet-item">Total Cycle Time: <strong>${dfma.total_cycle_time_min} min (${dfma.total_cycle_time_hours} hrs)</strong></div>
+          <div class="antet-item">Total Setup Time: <strong>${dfma.total_setup_time_min} min</strong></div>
         </div>
       </div>
     `;
   }
-
-  if (warningsBox && dfma.dfma_warnings) {
-    warningsBox.innerHTML = dfma.dfma_warnings.map(w => `
-      <div class="stat-chip" style="border-color: ${w.severity === 'warning' ? 'var(--term-amber)' : 'var(--term-green)'}; width: 100%;">
-        <strong>${w.rule}:</strong> ${w.message}
-      </div>
-    `).join('');
-  }
-
-  if (opsBox && dfma.manufacturing_operations) {
-    opsBox.innerHTML = dfma.manufacturing_operations.map(op => `
-      <div class="op-card">
-        <div class="op-header">
-          <span>STEP ${op.step}: ${op.operation}</span>
-          <span style="color: var(--term-amber);">${op.process_time_sec}s (Setup: ${op.setup_time_min}m)</span>
-        </div>
-        <div class="op-desc">${op.description}</div>
-        <div class="op-meta">🛠️ Machine: ${op.machine} | Tool: ${op.tooling}</div>
-      </div>
-    `).join('');
-  }
 }
 
 async function handleExplodeAssembly() {
-  if (!currentKCLCode) return;
+  if (!currentKCLCode) {
+    streamLog("WARNING", "No KCL code generated yet. Complete parameter verification first.");
+    return;
+  }
 
-  showTerminalLog("SYSTEM: Exploding assembly drawing into individual sub-parts...", "info");
+  streamLog("EXPLOADER_AGENT", "POST /api/explode-assembly -> Decomposing assembly into positions (Pozlar)...");
 
   try {
     const res = await fetch("/api/explode-assembly", {
@@ -317,39 +267,73 @@ async function handleExplodeAssembly() {
     });
 
     const data = await res.json();
-    renderExplodedParts(data);
-    showTerminalLog(`SYSTEM: Assembly exploded into ${data.sub_part_count} individual manufacturable parts.`, "info");
+    renderPositionsList(data.parts || []);
+    streamLog("EXPLOADER_AGENT", `HTTP 200 OK -> Successfully extracted ${data.sub_part_count} positions (Pozlar).`);
 
   } catch (err) {
     console.error(err);
-    showTerminalLog(`EXPLODE_ERROR: ${err.message}`, "error");
+    streamLog("EXPLODE_ERROR", `Explode operation failed: ${err.message}`);
     alert("Explode operation failed: " + err.message);
   }
 }
 
-function renderExplodedParts(data) {
-  const container = document.getElementById("explodedPartsContainer");
+function renderPositionsList(positions) {
+  const container = document.getElementById("positionsContainer");
   if (!container) return;
 
-  container.style.display = "flex";
-  
-  let html = `<div style="font-size: 0.8rem; font-weight: 700; color: var(--term-amber); margin-bottom: 0.5rem; letter-spacing: 1px;">
-    💥 EXPLODED MANUFACTURING SUB-PARTS (${data.sub_part_count} ITEMS)
+  if (positions.length === 0) {
+    container.innerHTML = `<div style="color: var(--text-dim);">Click 'Explode to Manufacture' to decompose assembly.</div>`;
+    return;
+  }
+
+  let html = `<div style="font-size: 0.85rem; font-weight: 700; color: var(--term-amber); margin-bottom: 0.75rem; letter-spacing: 1px;">
+    🧩 ASSEMBLY POSITIONS & MANUFACTURING OPERATIONS (${positions.length} ITEMS)
   </div>`;
 
-  data.parts.forEach(p => {
+  positions.forEach(pos => {
+    const kclEscaped = encodeURIComponent(pos.kcl_code || "");
+    
     html += `
-      <div class="op-card" style="border-left-color: var(--term-amber);">
-        <div class="op-header">
-          <strong style="color: var(--text-main);">${p.part_name}</strong>
-          <span style="color: var(--term-green);">${p.status}</span>
+      <div class="position-card">
+        <div class="position-header">
+          <div>
+            <div class="position-title">${pos.full_name}</div>
+            <div class="position-meta">${pos.type} • Dimensions: ${pos.dimensions} • Mass: ${pos.mass_g}g</div>
+          </div>
+          <button class="btn btn-secondary" onclick="openInZooStudio('${kclEscaped}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+            🚀 OPEN IN ZOO.STUDIO
+          </button>
         </div>
-        <div class="op-desc">${p.type} • Dimensions: ${p.dimensions} • Mass: ${p.mass_g}g</div>
+
+        <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-cyan); margin-top: 0.25rem;">
+          ⚙️ Manufacturing Routing Operations:
+        </div>
+        <div class="op-list">
+          ${pos.operations ? pos.operations.map(op => `
+            <div class="op-item">
+              <span>Step ${op.step}: <strong>${op.op}</strong> (${op.machine})</span>
+              <span style="color: var(--term-amber);">${op.time_sec}s</span>
+            </div>
+          `).join('') : '<div style="font-size: 0.7rem; color: var(--text-dim);">Standard laser cut & bend operations</div>'}
+        </div>
       </div>
     `;
   });
 
   container.innerHTML = html;
+}
+
+function openInZooStudio(kclEncoded) {
+  const kclCode = decodeURIComponent(kclEncoded);
+  
+  // Copy KCL code to user clipboard for quick paste in Zoo Studio
+  navigator.clipboard.writeText(kclCode).then(() => {
+    streamLog("ZOO_STUDIO", "KCL code copied to clipboard! Opening Zoo Studio (zoo.dev/studio)...");
+  }).catch(err => {
+    streamLog("ZOO_STUDIO", "Opening Zoo Studio (zoo.dev/studio)...");
+  });
+
+  window.open("https://zoo.dev/studio", "_blank");
 }
 
 function initActionButtons() {
@@ -369,14 +353,18 @@ function initActionButtons() {
   }
 }
 
-function showTerminalLog(msg, type) {
-  const consoleBox = document.getElementById("terminalConsole");
+function streamLog(caller, message) {
+  const consoleBox = document.getElementById("footerTerminalLogs");
   if (!consoleBox) return;
 
+  const timestamp = new Date().toLocaleTimeString();
   const line = document.createElement("div");
-  line.className = "terminal-line";
-  if (type === "error") line.style.color = "var(--term-red)";
-  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  line.className = "log-line";
+  line.innerHTML = `
+    <span class="log-time">[${timestamp}]</span>
+    <span class="log-caller">[${caller}]</span>
+    <span>${message}</span>
+  `;
   consoleBox.appendChild(line);
   consoleBox.scrollTop = consoleBox.scrollHeight;
 }
