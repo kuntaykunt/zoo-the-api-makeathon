@@ -102,6 +102,14 @@ function initUploadBox() {
 
   console.log("[UPLOAD] initUploadBox called, attaching listeners...");
 
+  // Clicking the dropzone opens the native file picker.
+  dropzone.addEventListener("click", (e) => {
+    // Avoid double-trigger if the click originated from the file input itself.
+    if (e.target === fileInput) return;
+    e.preventDefault();
+    fileInput.click();
+  });
+
   dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -429,8 +437,7 @@ async function submitAnswers() {
         `;
       }
 
-      // Enable Manufacturing Review button
-      const explodeBtn = document.getElementById("explodeBtn");
+      // Enable Manufacturing Review button (explodeBtn already declared above)
       if (explodeBtn) {
         explodeBtn.style.display = "inline-flex";
         explodeBtn.disabled = false;
