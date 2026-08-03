@@ -43,7 +43,7 @@
           <div class="upload-icon">📡</div>
           <div class="upload-title">INITIALIZE DRAWING INGESTION</div>
           <div class="upload-desc">Drop 2D Technical Drawing (PDF / JPEG) or click to browse</div>
-          <input type="file" id="fileInput" accept="image/*,application/pdf">
+          <input type="file" id="fileInput" accept="image/*,application/pdf" onchange="if(this.files[0])handleFileUpload(this.files[0])">
         </div>
 
         <div class="uploaded-file-card" id="uploadedFileCard" style="display: none;">
