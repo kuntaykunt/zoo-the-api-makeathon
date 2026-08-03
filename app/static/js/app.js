@@ -84,7 +84,6 @@ function initUploadBox() {
 }
 
 async function handleFileUpload(file) {
-  // Hide dropzone
   const dropzone = document.getElementById("dropzone");
   const fileCard = document.getElementById("uploadedFileCard");
   const resetBtn = document.getElementById("resetFileBtn");
@@ -95,7 +94,6 @@ async function handleFileUpload(file) {
     document.getElementById("fileNameText").textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
   }
   
-  // Hide Change File button once processing begins as requested
   if (resetBtn) resetBtn.style.display = "none";
 
   streamLog("HARNESS_LOOP", "[STEP 1/4] Normalizing image buffer & executing Qwen-VL Vision Inspection...");
@@ -114,13 +112,15 @@ async function handleFileUpload(file) {
 
     const data = await res.json();
     currentEvalState = data;
-    currentPartName = data.title_block?.part_name || data.part_name || "Sheet Metal Support Bracket";
+    currentPartName = data.title_block?.part_name || data.part_name || file.name.split('.')[0];
 
-    if (data.raw_qwen_response) {
+    if (data.error) {
+      streamLog("QWEN_ERROR", data.message);
+    } else if (data.raw_qwen_response) {
       streamLog("QWEN_VL_RESPONSE", data.raw_qwen_response);
     }
 
-    streamLog("QWEN_VL_AGENT", `HTTP 200 OK -> Scanned Title Block: '${currentPartName}' (${data.title_block?.drawing_number || 'DWG-2026'}).`);
+    streamLog("QWEN_VL_AGENT", `Analysis Complete -> Part Title: '${currentPartName}' (DWG: ${data.title_block?.drawing_number || 'N/A'}).`);
 
     if (data.agentic_trace) {
       data.agentic_trace.forEach(logMsg => streamLog("AGENT_TRACE", logMsg));
@@ -137,7 +137,9 @@ async function handleFileUpload(file) {
 }
 
 function resetFileUpload() {
+  console.log("[System] START FRESH Triggered...");
   const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("fileInput");
   const fileCard = document.getElementById("uploadedFileCard");
   const gatekeeperCard = document.getElementById("gatekeeperCard");
   const antetCard = document.getElementById("antetCard");
@@ -145,27 +147,27 @@ function resetFileUpload() {
   const positionsContainer = document.getElementById("positionsContainer");
   const kclEditor = document.getElementById("kclEditor");
 
+  if (fileInput) fileInput.value = "";
   if (dropzone) dropzone.style.display = "block";
   if (fileCard) fileCard.style.display = "none";
   if (gatekeeperCard) gatekeeperCard.style.display = "none";
   if (antetCard) antetCard.style.display = "none";
   if (explodeBtn) explodeBtn.style.display = "none";
   if (kclEditor) kclEditor.textContent = "// Upload technical drawing to synthesize KittyCAD Language (KCL) code...";
-  if (positionsContainer) containerReset(positionsContainer);
+
+  if (positionsContainer) {
+    positionsContainer.innerHTML = `
+      <div style="color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 2rem; border: 1px dashed var(--term-border);">
+        Ingest a drawing and complete parameter verification to unlock <strong>'EXPLODE TO MANUFACTURE'</strong> capability.
+      </div>
+    `;
+  }
 
   isZooModelVerified = false;
   currentEvalState = null;
   currentKCLCode = "";
 
-  streamLog("AGENT_HARNESS", "START FRESH: Reset ingestion state buffer. Ready for new technical drawing.");
-}
-
-function containerReset(container) {
-  container.innerHTML = `
-    <div style="color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 2rem; border: 1px dashed var(--term-border);">
-      Ingest a drawing and click <strong>'EXPLODE TO MANUFACTURE'</strong> to decompose assembly into itemized positions (Pozlar) and step-by-step manufacturing routing.
-    </div>
-  `;
+  streamLog("AGENT_HARNESS", "START FRESH: State buffer cleared. Drag-and-Drop Ingestion box re-activated.");
 }
 
 function renderTitleBlock(tb) {
@@ -194,6 +196,23 @@ function renderEvaluationGatekeeper(data) {
 
   gatekeeperCard.style.display = "block";
 
+  if (data.error) {
+    if (evalStatusPill) {
+      evalStatusPill.className = "pill";
+      evalStatusPill.style.color = "var(--term-red)";
+      evalStatusPill.innerHTML = `❌ QWEN API RESPONSE ALERT`;
+    }
+    questionsContainer.innerHTML = `
+      <div style="background: rgba(255, 42, 109, 0.1); border: 1px solid var(--term-red); padding: 0.75rem; color: var(--term-red); font-size: 0.8rem; margin-bottom: 0.5rem;">
+        <strong>API Response:</strong> ${data.message}
+      </div>
+      <div style="font-size: 0.75rem; color: var(--text-dim);">
+        Please verify parameters manually below to continue KCL synthesis:
+      </div>
+    `;
+    return;
+  }
+
   if (data.satisfies_requirements) {
     if (evalStatusPill) {
       evalStatusPill.className = "pill online";
@@ -211,7 +230,7 @@ function renderEvaluationGatekeeper(data) {
     streamLog("HARNESS_LOOP", "[STEP 2/4] Audit Alert: Parameters missing. Requesting user input verification...");
 
     let html = `<div style="font-size: 0.8rem; color: var(--term-amber); margin-bottom: 0.65rem;">
-      [!] Qwen Vision AI detected missing parameters. Please confirm below:
+      [!] Confirm missing technical parameters to proceed:
     </div>`;
 
     if (data.questions && data.questions.length > 0) {
@@ -282,7 +301,7 @@ async function submitAnswers() {
 
     } else {
       isZooModelVerified = false;
-      streamLog("ZOO_ENGINE_API", "HTTP 400 ERROR -> Zoo Engine compile unverified. Re-triggering Qwen API parameter loop...");
+      streamLog("ZOO_ENGINE_API", "HTTP 400 ERROR -> Zoo Engine compile unverified.");
     }
 
   } catch (err) {
