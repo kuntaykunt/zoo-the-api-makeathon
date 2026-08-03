@@ -7,8 +7,18 @@ class DFMAService:
             return 8.00
         elif any(k in m for k in ["al", "alum", "alüminyum", "6061", "7075", "5083"]):
             return 2.70
-        elif "titan" in m:
+        elif any(k in m for k in ["copper", "bakır", "cu"]):
+            return 8.93
+        elif any(k in m for k in ["brass", "pirinç"]):
+            return 8.50
+        elif any(k in m for k in ["bronze", "bronz"]):
+            return 8.80
+        elif any(k in m for k in ["titan", "ti"]):
             return 4.43
+        elif any(k in m for k in ["zinc", "çinko", "zn"]):
+            return 7.10
+        elif any(k in m for k in ["cast iron", "dökme demir", "ggg"]):
+            return 7.20
         return 7.85 if "st" in m else 2.70
 
     def analyze_manufacturing(self, kcl_code: str, part_info: dict, engine_metrics: dict = None) -> dict:

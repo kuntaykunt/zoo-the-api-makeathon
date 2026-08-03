@@ -409,6 +409,108 @@ body {
   justify-content: space-between;
 }
 
+/* Loading Spinner / Activity Indicator */
+.loading-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--term-amber);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.loading-spinner-sm {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Pulse dot for active API calls */
+.pulse-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--term-amber);
+  border-radius: 50%;
+  animation: pulse 1.2s ease-in-out infinite;
+  margin-right: 6px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* Terminal sliding activity indicator */
+.terminal-active-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--term-cyan), var(--term-green), var(--term-cyan));
+  background-size: 200% 100%;
+  animation: slide-bar 1.5s linear infinite;
+  border-radius: 0 0 2px 2px;
+  transition: width 0.3s ease;
+}
+
+@keyframes slide-bar {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+
+.footer-terminal {
+  position: relative;
+}
+
+/* Prevent text selection on terminal chrome, allow in body */
+.terminal-resize-handle,
+.footer-terminal-header {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.footer-terminal-body {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* Button loading state */
+.btn.loading {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.btn.loading::after {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0,0,0,0.3);
+  border-top-color: #000;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.btn-secondary.loading::after {
+  border-color: rgba(0, 243, 255, 0.3);
+  border-top-color: var(--term-cyan);
+}
+
 /* Resizable Bottom Footer Terminal Console */
 .footer-terminal {
   position: fixed;

@@ -8,16 +8,32 @@ let currentUploadName = "";
 let currentUserAnswers = {};
 let loopSessionId = null;
 let loopRunning = false;
+let apiCallCount = 0;
+
+// Terminal activity bar control
+let terminalActivityTimeout = null;
+
+function showTerminalActivity(durationMs = 3000) {
+  const bar = document.getElementById("terminalActiveBar");
+  if (!bar) return;
+  bar.style.display = "block";
+  bar.style.width = "100%";
+  clearTimeout(terminalActivityTimeout);
+  terminalActivityTimeout = setTimeout(() => {
+    bar.style.display = "none";
+    bar.style.width = "0%";
+  }, durationMs);
+}
 
 document.addEventListener("DOMContentLoaded", () => {
   initUploadBox();
   initActionButtons();
   initResizableTerminal();
-  
+
   const explodeBtn = document.getElementById("explodeBtn");
   if (explodeBtn) explodeBtn.style.display = "none";
 
-  streamLog("AGENT_HARNESS", "Initialized Agentic Loop Engine v2.4.");
+  streamLog("AGENT_HARNESS", "Initialized Agentic Loop Engine v2.5.");
   streamLog("AGENT_HARNESS", "GATING STATUS: 'EXPLODE TO MANUFACTURE' capability LOCKED.");
   streamLog("AGENT_HARNESS", "Prerequisites: 1. Drawing Inspection -> 2. Title Block Audit -> 3. Zoo API Verification.");
 });
@@ -90,17 +106,22 @@ async function handleFileUpload(file) {
   const dropzone = document.getElementById("dropzone");
   const fileCard = document.getElementById("uploadedFileCard");
   const resetBtn = document.getElementById("resetFileBtn");
-  
+  const submitBtn = document.getElementById("submitAnswersBtn");
+
   if (dropzone) dropzone.style.display = "none";
   if (fileCard) {
     fileCard.style.display = "flex";
     document.getElementById("fileNameText").textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
   }
-  
+
   if (resetBtn) resetBtn.style.display = "none";
 
   streamLog("HARNESS_LOOP", "[STEP 1/4] Normalizing image buffer & executing Qwen-VL Vision Inspection...");
   streamLog("QWEN_VL_AGENT", `POST /api/upload-drawing -> Transmitting '${file.name}' to Qwen-VL Vision API...`);
+
+  // Show loading state
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add("loading"); }
+  showTerminalActivity(5000);
 
   const formData = new FormData();
   formData.append("file", file);
@@ -138,6 +159,8 @@ async function handleFileUpload(file) {
     console.error(err);
     streamLog("ERROR", `Drawing inspection failure: ${err.message}`);
     alert("Error inspecting drawing: " + err.message);
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove("loading"); }
   }
 }
 
@@ -296,7 +319,7 @@ function renderEvaluationGatekeeper(data) {
 
 async function submitAnswers() {
   const userAnswers = {};
-  
+
   if (currentEvalState && currentEvalState.questions) {
     currentEvalState.questions.forEach(q => {
       const el = document.getElementById(`q_${q.id}`);
@@ -307,6 +330,10 @@ async function submitAnswers() {
   }
   userAnswers.part_name = userAnswers.part_name || currentPartName;
   currentUserAnswers = userAnswers;
+
+  const submitBtn = document.getElementById("submitAnswersBtn");
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add("loading"); }
+  showTerminalActivity(8000);
 
   streamLog("KCL_SYNTHESIZER", "Synthesizing KittyCAD KCL code from verified parameters...");
   streamLog("HARNESS_LOOP", "[STEP 3/4] Transmitting KCL payload to Zoo Engine API (api.zoo.dev)...");
@@ -327,12 +354,12 @@ async function submitAnswers() {
     renderDFMAAgent(data.dfma_analysis);
     renderEngineProof(data.zoo_verification);
 
-    // Render Synthesized KCL Code into UI box
+    // Render Synthesized KCL Code into UI box with syntax highlighting
     const kclCard = document.getElementById("kclCard");
     const kclCodeDisplay = document.getElementById("kclCodeDisplay");
     if (kclCard && kclCodeDisplay) {
       kclCard.style.display = "block";
-      kclCodeDisplay.textContent = currentKCLCode;
+      kclCodeDisplay.innerHTML = highlightKCL(currentKCLCode);
     }
 
     if (data.model_ready && data.zoo_verification?.model_ready) {
@@ -372,6 +399,8 @@ async function submitAnswers() {
     console.error(err);
     streamLog("ZOO_ERROR", `KCL compilation error: ${err.message}`);
     alert("KCL Compilation error: " + err.message);
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove("loading"); }
   }
 }
 
@@ -551,11 +580,12 @@ async function startEngineeringLoop() {
 
   loopRunning = true;
   const btn = document.getElementById("loopBtn");
-  if (btn) { btn.disabled = true; btn.style.opacity = 0.6; }
+  if (btn) { btn.disabled = true; btn.classList.add("loading"); }
   const statusBox = document.getElementById("loopStatus");
   if (statusBox) statusBox.innerHTML = "";
 
   streamLog("AGENT_LOOP", "POST /api/engineering-loop/start -> Opening Zookeeper engineering session...");
+  showTerminalActivity(10000);
   try {
     const res = await fetch("/api/engineering-loop/start", {
       method: "POST",
@@ -577,7 +607,7 @@ async function startEngineeringLoop() {
     alert("Engineering loop failed: " + err.message);
   } finally {
     loopRunning = false;
-    if (btn) { btn.disabled = false; btn.style.opacity = 1; }
+    if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
   }
 }
 
@@ -617,6 +647,10 @@ async function handleExplodeAssembly() {
   }
 
   streamLog("EXPLOADER_AGENT", "POST /api/explode-assembly -> Decomposing assembly into positions (Pozlar)...");
+
+  const explodeBtn = document.getElementById("explodeBtn");
+  if (explodeBtn) { explodeBtn.disabled = true; explodeBtn.classList.add("loading"); }
+  showTerminalActivity(6000);
   streamLog("ZOO_AGENT_API", "Verifying KCL geometry & auditing constraints for all positions (Pozlar)... [Buttons Grayed Out]");
 
   // Show grayout loading state while Zoo Agent API verifies KCL
@@ -638,12 +672,14 @@ async function handleExplodeAssembly() {
     setTimeout(() => {
       renderPositionsList(data.parts || []);
       streamLog("ZOO_AGENT_API", `HTTP 200 OK -> Geometry verification complete for all ${data.sub_part_count} positions (Pozlar). Action buttons UNLOCKED.`);
+      if (explodeBtn) { explodeBtn.disabled = false; explodeBtn.classList.remove("loading"); }
     }, 600);
 
   } catch (err) {
     console.error(err);
     streamLog("EXPLODE_ERROR", `Explode operation failed: ${err.message}`);
     alert("Explode operation failed: " + err.message);
+    if (explodeBtn) { explodeBtn.disabled = false; explodeBtn.classList.remove("loading"); }
   }
 }
 
@@ -731,7 +767,7 @@ function renderPositionsList(positions) {
                 📋 COPY POZ KCL
               </button>
             </div>
-            <div class="code-editor" style="height: 130px; font-size: 0.8rem; line-height: 1.4; color: var(--term-cyan);">${escapeHtml(kclRaw)}</div>
+            <div class="code-editor" style="height: 130px; font-size: 0.8rem; line-height: 1.4; color: var(--term-cyan);">${highlightKCL(kclRaw)}</div>
           </div>
         </div>
 
@@ -853,6 +889,9 @@ function streamLog(caller, message) {
   const consoleBox = document.getElementById("footerTerminalLogs");
   if (!consoleBox) return;
 
+  // Trigger terminal activity bar on every log
+  showTerminalActivity(2000);
+
   const timestamp = new Date().toLocaleTimeString();
   const line = document.createElement("div");
   line.className = "log-line";
@@ -863,4 +902,37 @@ function streamLog(caller, message) {
   `;
   consoleBox.appendChild(line);
   consoleBox.scrollTop = consoleBox.scrollHeight;
+}
+
+// KCL Syntax Highlighter (G5 — transparency)
+function highlightKCL(code) {
+  if (!code) return "";
+  let html = escapeHtml(code);
+
+  // @settings / annotations
+  html = html.replace(/(@settings|@annotations)\b/g, '<span style="color:var(--term-amber);font-weight:700;">$1</span>');
+
+  // Keywords
+  html = html.replace(/\b(startSketchOn|startProfileAt|line|close|extrude|circle|cutExtrude|loft|plane|XY|XZ|YZ|%)\b/g, '<span style="color:var(--term-green);font-weight:600;">$1</span>');
+
+  // Numbers
+  html = html.replace(/\b(\d+\.?\d*)\b/g, '<span style="color:var(--term-cyan);">$1</span>');
+
+  // Comments
+  html = html.replace(/(\/\/.*)/g, '<span style="color:#6a737d;font-style:italic;">$1</span>');
+
+  // Pipe operator
+  html = html.replace(/(\|&gt;)/g, '<span style="color:var(--term-amber);font-weight:700;">$1</span>');
+
+  return html;
+}
+
+// Escape HTML for safe rendering
+function escapeHtml(str) {
+  return (str || '')
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
