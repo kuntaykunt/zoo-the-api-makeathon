@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from typing import Any
 
 from app.config import config
 from app.services.qwen_service import qwen_service
@@ -44,8 +45,8 @@ class VerifyZooModelRequest(BaseModel):
     kcl_code: str
 
 class EngineeringStartRequest(BaseModel):
-    initial_eval: dict
-    user_answers: dict
+    initial_eval: Any = {}
+    user_answers: Any = {}
     upload_name: str = ""
     file_url: str = ""
 

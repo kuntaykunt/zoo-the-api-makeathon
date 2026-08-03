@@ -659,14 +659,18 @@ async function startEngineeringLoop() {
       })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "session start failed");
+    if (!res.ok) {
+      const detail = (Array.isArray(data.detail)) ? JSON.stringify(data.detail) : (data.detail || "session start failed");
+      throw new Error(detail);
+    }
     loopSessionId = data.session_id;
     streamLog("AGENT_LOOP", `Session opened (${loopSessionId}). Target envelope: ${(data.state?.target_bbox || []).join(" × ")} mm.`);
     await runEngineeringIterations();
   } catch (err) {
     console.error(err);
-    streamLog("AGENT_LOOP_ERROR", err.message);
-    alert("Engineering loop failed: " + err.message);
+    const msg = (typeof err.message === "string") ? err.message : JSON.stringify(err.message);
+    streamLog("AGENT_LOOP_ERROR", msg);
+    alert("Engineering loop failed: " + msg);
   } finally {
     loopRunning = false;
     if (btn) { btn.disabled = false; btn.classList.remove("loading"); }
@@ -687,6 +691,10 @@ async function runEngineeringIterations() {
       body: JSON.stringify({ session_id: loopSessionId })
     });
     const data = await res.json();
+    if (!res.ok) {
+      const detail = (Array.isArray(data.detail)) ? JSON.stringify(data.detail) : (data.detail || "iterate failed");
+      throw new Error(detail);
+    }
     const state = data.state;
     if (!state) throw new Error("no state returned");
 
