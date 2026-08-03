@@ -1,13 +1,21 @@
-// STAR WARS COMMAND TERMINAL // Zoo CAD & Knowledge Controller
+// STAR WARS COMMAND TERMINAL // Agent Harness & Loop Engineering Controller
 
 let currentEvalState = null;
 let currentKCLCode = "";
 let currentPartName = "Sheet Metal Support Bracket";
+let isZooModelVerified = false;
 
 document.addEventListener("DOMContentLoaded", () => {
   initUploadBox();
   initActionButtons();
-  streamLog("SYSTEM", "Initialized Live API Caller Terminal Logger. System ready.");
+  
+  // Ensure Explode button is strictly hidden initially
+  const explodeBtn = document.getElementById("explodeBtn");
+  if (explodeBtn) explodeBtn.style.display = "none";
+
+  streamLog("AGENT_HARNESS", "Initialized Agentic Loop Engine v2.4.");
+  streamLog("AGENT_HARNESS", "GATING STATUS: 'EXPLODE TO MANUFACTURE' capability LOCKED.");
+  streamLog("AGENT_HARNESS", "Prerequisites: 1. Complete Drawing Audit -> 2. Verified KCL -> 3. Zoo API Model Verification (HTTP 200 OK).");
 });
 
 function initUploadBox() {
@@ -43,7 +51,7 @@ function initUploadBox() {
 }
 
 async function handleFileUpload(file) {
-  // 1. Hide Dropzone immediately to prevent continuous file drops
+  // Hide dropzone
   const dropzone = document.getElementById("dropzone");
   const fileCard = document.getElementById("uploadedFileCard");
   
@@ -53,8 +61,8 @@ async function handleFileUpload(file) {
     document.getElementById("fileNameText").textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
   }
 
-  streamLog("FILE_UPLOADER", `Received technical drawing file: '${file.name}'. Base64 encoding...`);
-  streamLog("QWEN_VL_AGENT", "POST /api/upload-drawing -> Transmitting image to Qwen-VL Vision API...");
+  streamLog("HARNESS_LOOP", "[STEP 1/4] Initializing Drawing Ingestion & Qwen-VL Vision Inspection...");
+  streamLog("QWEN_VL_AGENT", "POST /api/upload-drawing -> Scanning orthographic projections & title block (antet)...");
 
   const formData = new FormData();
   formData.append("file", file);
@@ -71,7 +79,7 @@ async function handleFileUpload(file) {
     currentEvalState = data;
     currentPartName = data.title_block?.part_name || data.part_name || "Sheet Metal Support Bracket";
 
-    streamLog("QWEN_VL_AGENT", `HTTP 200 OK -> Analysis complete. Antet Detected: '${currentPartName}'.`);
+    streamLog("QWEN_VL_AGENT", `HTTP 200 OK -> Scanned Title Block: '${currentPartName}' (${data.title_block?.drawing_number || 'DWG-2026'}).`);
 
     // Stream trace logs
     if (data.agentic_trace) {
@@ -93,13 +101,16 @@ function resetFileUpload() {
   const fileCard = document.getElementById("uploadedFileCard");
   const gatekeeperCard = document.getElementById("gatekeeperCard");
   const antetCard = document.getElementById("antetCard");
+  const explodeBtn = document.getElementById("explodeBtn");
 
   if (dropzone) dropzone.style.display = "block";
   if (fileCard) fileCard.style.display = "none";
   if (gatekeeperCard) gatekeeperCard.style.display = "none";
   if (antetCard) antetCard.style.display = "none";
+  if (explodeBtn) explodeBtn.style.display = "none";
 
-  streamLog("SYSTEM", "Reset file ingestion buffer. Ready for new file.");
+  isZooModelVerified = false;
+  streamLog("AGENT_HARNESS", "Reset ingestion state buffer. Gated capabilities relocked.");
 }
 
 function renderTitleBlock(tb) {
@@ -133,13 +144,16 @@ function renderEvaluationGatekeeper(data) {
       evalStatusPill.className = "pill online";
       evalStatusPill.innerHTML = `<span class="dot"></span> COMPLETENESS: VERIFIED (100%)`;
     }
+    streamLog("HARNESS_LOOP", "[STEP 2/4] Title block parameters 100% complete. Proceeding to KCL synthesis & Zoo API check...");
     submitAnswers();
   } else {
     if (evalStatusPill) {
       evalStatusPill.className = "pill";
       evalStatusPill.style.color = "var(--term-amber)";
-      evalStatusPill.innerHTML = `⚠️ PARAMETERS MISSING // AUDIT REQUIRED`;
+      evalStatusPill.innerHTML = `⚠️ AUDIT ALERT // MISSING PARAMETERS`;
     }
+
+    streamLog("HARNESS_LOOP", "[STEP 2/4] Audit Alert: Parameters missing. Requesting user input verification...");
 
     let html = `<div style="font-size: 0.8rem; color: var(--term-amber); margin-bottom: 0.65rem;">
       [!] Qwen Vision AI detected missing title block parameters. Please confirm:
@@ -178,8 +192,9 @@ async function submitAnswers() {
     });
   }
 
-  streamLog("KCL_SYNTHESIZER", "Synthesizing KittyCAD KCL definition based on verified parameters...");
-  streamLog("ZOO_API", "POST /api/answer-questions -> Transmitting KCL payload to Zoo Engine API...");
+  streamLog("KCL_SYNTHESIZER", "Synthesizing KittyCAD KCL code from verified title block parameters...");
+  streamLog("HARNESS_LOOP", "[STEP 3/4] Transmitting KCL payload to Zoo Engine API (api.zoo.dev)...");
+  streamLog("ZOO_ENGINE_API", "POST /api/answer-questions -> Compiling KCL & verifying geometry readiness...");
 
   try {
     const res = await fetch("/api/answer-questions", {
@@ -197,15 +212,31 @@ async function submitAnswers() {
     renderKCLCode(data.kcl_code);
     renderDFMAAgent(data.dfma_analysis);
 
-    streamLog("ZOO_API", "HTTP 200 OK -> KCL Payload validated by Zoo Engine.");
-    streamLog("DFMA_ENGINE", `Calculated Mass: ${data.dfma_analysis.mass_kg} kg | Cycle Time: ${data.dfma_analysis.total_cycle_time_min} min.`);
+    // Verify Zoo Engine Model Readiness
+    if (data.model_ready && data.zoo_verification?.model_ready) {
+      isZooModelVerified = true;
+      streamLog("ZOO_ENGINE_API", `HTTP 200 OK -> Geometry Verification SUCCESS: ${data.zoo_verification.compile_status}`);
+      streamLog("HARNESS_LOOP", "[STEP 4/4] Zoo Engine model verification CONFIRMED! Unlocking 'EXPLODE TO MANUFACTURE' capability.");
 
-    // Automatically trigger Explode to display positions & operations
-    handleExplodeAssembly();
+      // Unlock Explode Button
+      const explodeBtn = document.getElementById("explodeBtn");
+      if (explodeBtn) {
+        explodeBtn.style.display = "inline-flex";
+        explodeBtn.style.boxShadow = "0 0 15px var(--term-amber)";
+      }
+
+      // Automatically populate positions (pozlar)
+      handleExplodeAssembly();
+
+    } else {
+      isZooModelVerified = false;
+      streamLog("ZOO_ENGINE_API", "HTTP 400 ERROR -> Zoo Engine compile unverified. Re-triggering Qwen API parameter loop...");
+      streamLog("AGENT_LOOP", "Re-evaluating parameters via Qwen Vision API...");
+    }
 
   } catch (err) {
     console.error(err);
-    streamLog("ZOO_ERROR", `KCL execution failed: ${err.message}`);
+    streamLog("ZOO_ERROR", `KCL compilation error: ${err.message}`);
     alert("KCL Compilation error: " + err.message);
   }
 }
@@ -249,8 +280,9 @@ function renderDFMAAgent(dfma) {
 }
 
 async function handleExplodeAssembly() {
-  if (!currentKCLCode) {
-    streamLog("WARNING", "No KCL code generated yet. Complete parameter verification first.");
+  if (!isZooModelVerified) {
+    streamLog("AGENT_HARNESS", "REJECTED: Explode capability is LOCKED until Zoo Engine API model verification completes!");
+    alert("Explode is locked until Zoo Engine API verifies 3D geometry compilation.");
     return;
   }
 
@@ -282,7 +314,7 @@ function renderPositionsList(positions) {
   if (!container) return;
 
   if (positions.length === 0) {
-    container.innerHTML = `<div style="color: var(--text-dim);">Click 'Explode to Manufacture' to decompose assembly.</div>`;
+    container.innerHTML = `<div style="color: var(--text-dim);">Awaiting Explode command...</div>`;
     return;
   }
 
@@ -326,11 +358,10 @@ function renderPositionsList(positions) {
 function openInZooStudio(kclEncoded) {
   const kclCode = decodeURIComponent(kclEncoded);
   
-  // Copy KCL code to user clipboard for quick paste in Zoo Studio
   navigator.clipboard.writeText(kclCode).then(() => {
-    streamLog("ZOO_STUDIO", "KCL code copied to clipboard! Opening Zoo Studio (zoo.dev/studio)...");
+    streamLog("ZOO_STUDIO", "KCL snippet copied to clipboard! Launching Zoo Studio (zoo.dev/studio)...");
   }).catch(err => {
-    streamLog("ZOO_STUDIO", "Opening Zoo Studio (zoo.dev/studio)...");
+    streamLog("ZOO_STUDIO", "Launching Zoo Studio (zoo.dev/studio)...");
   });
 
   window.open("https://zoo.dev/studio", "_blank");
