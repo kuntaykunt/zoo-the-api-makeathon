@@ -213,7 +213,6 @@ function resetFileUpload() {
   loopResults = null;
 
   // Disable Manufacturing Review button on reset
-  const explodeBtn = document.getElementById("explodeBtn");
   if (explodeBtn) {
     explodeBtn.style.display = "none";
     explodeBtn.disabled = true;
