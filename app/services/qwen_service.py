@@ -3,6 +3,7 @@ import json
 import base64
 import requests
 from PIL import Image
+import fitz  # PyMuPDF for rock-solid PDF page to RGB image conversion
 from app.config import config
 
 class QwenService:
@@ -13,50 +14,58 @@ class QwenService:
 
     def normalize_image_to_jpeg_b64(self, file_bytes: bytes, original_filename: str = "") -> str:
         """
-        Normalizes any uploaded image or PDF into a clean RGB JPEG base64 string
-        for Qwen-VL Vision API payload compatibility.
+        Normalizes any uploaded PDF or image into a clean, 24-bit RGB baseline JPEG base64 string
+        to prevent Qwen-VL 'InternalError.Algo.InvalidParameter: The image format is illegal' errors.
         """
         try:
+            # 1. Handle PDF files via PyMuPDF (fitz)
             if original_filename.lower().endswith(".pdf") or file_bytes.startswith(b"%PDF"):
-                try:
-                    from pdf2image import convert_from_bytes
-                    images = convert_from_bytes(file_bytes, first_page=1, last_page=1)
-                    if images:
-                        buf = io.BytesIO()
-                        images[0].convert("RGB").save(buf, format="JPEG", quality=85)
-                        return base64.b64encode(buf.getvalue()).decode("utf-8")
-                except Exception as pdf_err:
-                    print(f"[QwenService] pdf2image info: {pdf_err}")
+                doc = fitz.open(stream=file_bytes, filetype="pdf")
+                if len(doc) > 0:
+                    page = doc[0]
+                    # Render page to high-res image (150 DPI for CAD text legibility)
+                    pix = page.get_pixmap(dpi=150)
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                else:
+                    raise ValueError("PDF document has 0 pages.")
+            else:
+                # 2. Handle Image files (PNG, JPEG, WEBP, BMP, TIFF)
+                img = Image.open(io.BytesIO(file_bytes))
+                img = img.convert("RGB") # Force 24-bit RGB mode (removes Alpha channels)
 
-            img = Image.open(io.BytesIO(file_bytes))
-            img = img.convert("RGB")
-            
-            max_size = 2048
-            if img.width > max_size or img.height > max_size:
-                img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                
+            # 3. Resize if image exceeds Qwen-VL recommended max resolution (1536px)
+            max_dim = 1536
+            if img.width > max_dim or img.height > max_dim:
+                img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+            # 4. Save as standard baseline JPEG
             buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=85)
-            return base64.b64encode(buf.getvalue()).decode("utf-8")
+            img.save(buf, format="JPEG", quality=85, optimize=True, progressive=False)
+            b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+            
+            # Clean string
+            return b64_str.replace("\n", "").replace("\r", "").strip()
 
         except Exception as e:
-            print(f"[QwenService] Image conversion notice: {e}")
-            return base64.b64encode(file_bytes).decode("utf-8")
+            print(f"[QwenService] Normalization error: {e}")
+            # Fallback to direct base64
+            b64_str = base64.b64encode(file_bytes).decode("utf-8")
+            return b64_str.replace("\n", "").replace("\r", "").strip()
 
     def evaluate_drawing(self, file_bytes: bytes, original_filename: str = "") -> dict:
         """
-        100% Dynamic Vision Evaluation of technical drawings using Qwen-VL.
-        NO hardcoded mocks or fake drawing numbers.
+        Dynamic Agentic Evaluation of technical drawings using Qwen-VL.
+        Sends pristine RGB JPEG base64 data to Qwen Vision API.
         """
         image_base64 = self.normalize_image_to_jpeg_b64(file_bytes, original_filename)
 
         if not self.api_key or self.api_key.startswith("your_"):
             return {
                 "error": True,
-                "message": "QWEN_API_KEY is not set in .env file. Please provide a valid QWEN_API_KEY.",
+                "message": "QWEN_API_KEY is not configured in .env file. Please enter a valid QWEN_API_KEY.",
                 "satisfies_requirements": False,
                 "agentic_trace": [
-                    "[LOG 01]: Image uploaded and normalized.",
+                    "[LOG 01]: Image buffer converted to RGB JPEG.",
                     "[ERROR]: QWEN_API_KEY missing in .env configuration."
                 ],
                 "title_block": {
@@ -87,7 +96,7 @@ class QwenService:
 You are an expert CAD & Manufacturing AI Inspector analyzing the uploaded engineering drawing '{original_filename}'.
 
 Analyze the image dynamically:
-1. Scan the Title Block (Antet): Extract exact Part Title, Drawing/Part Number, Revision, Material, Scale, Tolerances, and Designer if visible. If not visible, return "NOT_FOUND".
+1. Scan the Title Block (Antet): Extract exact Part Title, Drawing/Part Number, Revision, Material, Scale, Tolerances, and Designer if visible.
 2. Inspect 2D projections: Identify overall dimensions, sheet thickness, hole counts, and bend lines.
 3. Determine if critical manufacturing specs (Thickness, Material, Dimensions) are complete:
    - If complete: set "satisfies_requirements": true, "missing_information": [], "questions": [].
@@ -96,18 +105,18 @@ Analyze the image dynamically:
 Return ONLY valid JSON matching this schema:
 {{
   "agentic_trace": [
-    "LOG [01]: Scanning drawing canvas '{original_filename}'...",
-    "LOG [02]: Reading title block text...",
+    "LOG [01]: Image normalized to 150 DPI RGB JPEG.",
+    "LOG [02]: Scanning title block (antet) text in drawing...",
     "LOG [03]: Auditing dimensions & parameters..."
   ],
   "title_block": {{
-    "part_name": "Exact title from image or '{original_filename.split('.')[0]}'",
-    "drawing_number": "Exact DWG number from image or 'UNKNOWN'",
-    "revision": "Exact revision or 'A'",
-    "material_spec": "Exact material or 'UNSPECIFIED'",
-    "scale": "Exact scale or '1:1'",
-    "tolerances": "Exact tolerance grade or 'ISO 2768-m'",
-    "designer": "Exact author/company or 'UNSPECIFIED'"
+    "part_name": "Extracted title from drawing title block",
+    "drawing_number": "Extracted DWG number or 'UNKNOWN'",
+    "revision": "Extracted revision or 'A'",
+    "material_spec": "Extracted material alloy or 'UNSPECIFIED'",
+    "scale": "Extracted scale or '1:1'",
+    "tolerances": "Extracted tolerance grade or 'ISO 2768-m'",
+    "designer": "Extracted author/company or 'UNSPECIFIED'"
   }},
   "satisfies_requirements": true or false,
   "is_assembly": true or false,
@@ -138,37 +147,48 @@ Return ONLY valid JSON matching this schema:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             }
+            
+            # Construct standard OpenAI vision payload for Qwen-VL
             payload = {
                 "model": self.model,
                 "messages": [
                     {
                         "role": "user",
                         "content": [
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
-                            {"type": "text", "text": prompt}
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_base64}"
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt
+                            }
                         ]
                     }
                 ],
                 "response_format": {"type": "json_object"}
             }
 
-            res = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=payload, timeout=30)
+            res = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=payload, timeout=35)
+            
             if res.status_code == 200:
                 data = res.json()
                 content = data["choices"][0]["message"]["content"]
                 parsed = json.loads(content)
-                parsed["raw_qwen_response"] = "HTTP 200 OK (Qwen-VL Vision Analyzed)"
+                parsed["raw_qwen_response"] = "HTTP 200 OK (Qwen-VL Vision Analyzed Successfully)"
                 parsed["error"] = False
                 return parsed
             else:
-                err_text = res.text[:300]
+                err_text = res.text[:400]
                 print(f"[QwenService] API Error {res.status_code}: {err_text}")
                 return {
                     "error": True,
                     "message": f"Qwen API Error {res.status_code}: {err_text}",
                     "satisfies_requirements": False,
                     "agentic_trace": [
-                        "[LOG 01]: Image normalized to JPEG.",
+                        "[LOG 01]: Image normalized to RGB JPEG.",
                         f"[ERROR]: Qwen API responded with HTTP {res.status_code}: {err_text}"
                     ],
                     "title_block": {
