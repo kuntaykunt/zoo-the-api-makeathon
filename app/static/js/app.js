@@ -137,7 +137,6 @@ async function handleFileUpload(file) {
 }
 
 function resetFileUpload() {
-  console.log("[System] START FRESH Triggered...");
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("fileInput");
   const fileCard = document.getElementById("uploadedFileCard");
@@ -210,7 +209,7 @@ function renderInferenceSummary(data) {
       <strong>CAD Inference Summary:</strong> ${data.detected_parameters?.overall_dimensions || 'Dimensions detected from projections.'}
     </div>
     <div style="font-size: 0.75rem; color: var(--text-dim); line-height: 1.4; background: rgba(0,0,0,0.4); padding: 0.5rem; border-left: 2px solid var(--term-cyan);">
-      🤖 <strong>Zoo Agent API Summary:</strong> Evaluated drawing geometry. Identified sub-component boundaries & manufacturing constraints. Ready to compile KCL definitions for each position (Poz).
+      🤖 <strong>Zoo Agent API Summary:</strong> Evaluated drawing geometry. Identified sub-component boundaries & manufacturing constraints. Ready to synthesize KCL for positions (Pozlar).
     </div>
   `;
 }
@@ -309,33 +308,13 @@ async function submitAnswers() {
     });
 
     const data = await res.json();
-    
     currentKCLCode = data.kcl_code;
     renderDFMAAgent(data.dfma_analysis);
-
-    // Update Zoo Agent Summary
-    if (data.zoo_verification?.summary) {
-      const inferenceContainer = document.getElementById("inferenceContent");
-      if (inferenceContainer) {
-        const isAssembly = currentEvalState?.is_assembly !== false;
-        inferenceContainer.innerHTML = `
-          <div style="font-size: 0.85rem; font-weight: 700; color: var(--term-amber); margin-bottom: 0.5rem;">
-            🔍 Classification: ${isAssembly ? "ASSEMBLY (Multi-Part Drawing Component)" : "SINGLE PART COMPONENT"}
-          </div>
-          <div style="font-size: 0.8rem; color: var(--text-main); margin-bottom: 0.4rem;">
-            <strong>Material:</strong> ${data.material} • <strong>Thickness:</strong> ${data.thickness_mm}mm
-          </div>
-          <div style="font-size: 0.75rem; color: var(--term-green); line-height: 1.4; background: rgba(5, 255, 161, 0.05); padding: 0.5rem; border: 1px solid rgba(5, 255, 161, 0.3);">
-            ✅ <strong>Zoo Agent API Verification:</strong> ${data.zoo_verification.summary}
-          </div>
-        `;
-      }
-    }
 
     if (data.model_ready && data.zoo_verification?.model_ready) {
       isZooModelVerified = true;
       streamLog("ZOO_ENGINE_API", `HTTP 200 OK -> Geometry Verification SUCCESS: ${data.zoo_verification.compile_status}`);
-      streamLog("HARNESS_LOOP", "[STEP 4/4] Zoo Engine model verification CONFIRMED! Unlocking 'EXPLODE TO MANUFACTURE' capability.");
+      streamLog("HARNESS_LOOP", "[STEP 4/4] Zoo Engine verification CONFIRMED! 'EXPLODE TO MANUFACTURE' capability UNLOCKED.");
 
       const explodeBtn = document.getElementById("explodeBtn");
       if (explodeBtn) {
@@ -343,7 +322,20 @@ async function submitAnswers() {
         explodeBtn.style.boxShadow = "0 0 15px var(--term-amber)";
       }
 
-      handleExplodeAssembly();
+      // Update positions container placeholder prompting user to click Explode
+      const positionsContainer = document.getElementById("positionsContainer");
+      if (positionsContainer) {
+        positionsContainer.innerHTML = `
+          <div style="background: rgba(5, 255, 161, 0.05); border: 1px solid var(--term-green); padding: 1.25rem; text-align: center; border-radius: 4px;">
+            <div style="color: var(--term-green); font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem;">
+              ✅ ZOO ENGINE GEOMETRY VERIFIED
+            </div>
+            <div style="color: var(--text-main); font-size: 0.8rem; margin-bottom: 0.75rem;">
+              Click the <strong>'💥 EXPLODE TO MANUFACTURE'</strong> button at the top-right to decompose assembly into itemized positions (Pozlar) and generate KittyCAD KCL launch buttons.
+            </div>
+          </div>
+        `;
+      }
 
     } else {
       isZooModelVerified = false;
@@ -431,8 +423,10 @@ function renderPositionsList(positions) {
     🧩 ASSEMBLY POSITIONS & MANUFACTURING OPERATIONS (${positions.length} ITEMS)
   </div>`;
 
-  positions.forEach(pos => {
-    const kclEscaped = encodeURIComponent(pos.kcl_code || "");
+  positions.forEach((pos, idx) => {
+    const kclRaw = pos.kcl_code || "";
+    // Store in global lookup map to avoid URI encoding issues
+    window[`_kcl_pos_${idx}`] = kclRaw;
     
     html += `
       <div class="position-card">
@@ -441,12 +435,12 @@ function renderPositionsList(positions) {
             <div class="position-title">${pos.full_name}</div>
             <div class="position-meta">${pos.type} • Dimensions: ${pos.dimensions} • Mass: ${pos.mass_g}g</div>
           </div>
-          <button class="btn btn-secondary" onclick="openInZooStudio('${kclEscaped}')" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+          <button class="btn btn-secondary" onclick="launchZooStudio(${idx}, '${pos.pos_id}')" style="padding: 0.45rem 0.85rem; font-size: 0.75rem; border-color: var(--term-cyan); color: var(--term-cyan);">
             🚀 OPEN IN ZOO.STUDIO
           </button>
         </div>
 
-        <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-cyan); margin-top: 0.25rem;">
+        <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-cyan); margin-top: 0.35rem;">
           ⚙️ Manufacturing Routing Operations:
         </div>
         <div class="op-list">
@@ -464,14 +458,17 @@ function renderPositionsList(positions) {
   container.innerHTML = html;
 }
 
-function openInZooStudio(kclEncoded) {
-  const kclCode = decodeURIComponent(kclEncoded);
+function launchZooStudio(idx, posId) {
+  const kclCode = window[`_kcl_pos_${idx}`] || "";
   
-  navigator.clipboard.writeText(kclCode).then(() => {
-    streamLog("ZOO_STUDIO", "KCL snippet copied to clipboard! Launching Zoo Studio (zoo.dev/studio)...");
-  }).catch(err => {
-    streamLog("ZOO_STUDIO", "Launching Zoo Studio (zoo.dev/studio)...");
-  });
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(kclCode).then(() => {
+      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Launching Zoo Studio (zoo.dev/studio)...`);
+      alert(`✅ KCL code for ${posId} copied to clipboard!\n\nOpening Zoo Studio (zoo.dev/studio). Paste (Ctrl+V/Cmd+V) directly into Zoo Studio editor.`);
+    }).catch(err => {
+      streamLog("ZOO_STUDIO", `Launching Zoo Studio (zoo.dev/studio)...`);
+    });
+  }
 
   window.open("https://zoo.dev/studio", "_blank");
 }
