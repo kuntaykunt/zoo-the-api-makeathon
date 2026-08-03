@@ -40,10 +40,13 @@ document.addEventListener("DOMContentLoaded", () => {
   initActionButtons();
   initTerminalPull();
 
+  // Hide loop button and manufacturing review by default
+  const loopCard = document.getElementById("loopCard");
+  if (loopCard) loopCard.style.display = "none";
   const explodeBtn = document.getElementById("explodeBtn");
-  if (explodeBtn) explodeBtn.style.display = "none";
+  if (explodeBtn) { explodeBtn.style.display = "none"; explodeBtn.disabled = true; }
 
-  streamLog("AGENT_HARNESS", "Initialized Agentic Loop Engine v2.6.");
+  streamLog("AGENT_HARNESS", "Initialized Agentic Loop Engine v2.7.");
   streamLog("AGENT_HARNESS", "GATING STATUS: 'MANUFACTURING REVIEW' capability LOCKED.");
   streamLog("AGENT_HARNESS", "Prerequisites: 1. Drawing Inspection -> 2. Title Block Audit -> 3. Zoo API Verification.");
 });
@@ -94,9 +97,10 @@ function initUploadBox() {
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("fileInput");
 
-  if (!dropzone || !fileInput) return;
+  if (!dropzone) { console.error("[UPLOAD] dropzone not found"); return; }
+  if (!fileInput) { console.error("[UPLOAD] fileInput not found"); return; }
 
-  // Native file input (positioned absolutely over the box) handles click
+  console.log("[UPLOAD] initUploadBox called, attaching listeners...");
 
   dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -115,15 +119,21 @@ function initUploadBox() {
     e.stopPropagation();
     dropzone.classList.remove("dragover");
     if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+      console.log("[UPLOAD] file dropped:", e.dataTransfer.files[0].name);
       handleFileUpload(e.dataTransfer.files[0]);
     }
   });
 
-  fileInput.addEventListener("change", (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFileUpload(e.target.files[0]);
-    }
-  });
+  // Remove any existing listener first, then add fresh one
+  const newFileInput = document.getElementById("fileInput");
+  if (newFileInput) {
+    newFileInput.addEventListener("change", (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        console.log("[UPLOAD] file selected:", e.target.files[0].name);
+        handleFileUpload(e.target.files[0]);
+      }
+    });
+  }
 }
 
 async function handleFileUpload(file) {
