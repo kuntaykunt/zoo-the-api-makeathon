@@ -4,6 +4,10 @@ let currentEvalState = null;
 let currentKCLCode = "";
 let currentPartName = "Sheet Metal Support Bracket";
 let isZooModelVerified = false;
+let currentUploadName = "";
+let currentUserAnswers = {};
+let loopSessionId = null;
+let loopRunning = false;
 
 document.addEventListener("DOMContentLoaded", () => {
   initUploadBox();
@@ -111,6 +115,7 @@ async function handleFileUpload(file) {
 
     const data = await res.json();
     currentEvalState = data;
+    currentUploadName = file.name;
     currentPartName = data.title_block?.part_name || data.part_name || file.name.split('.')[0];
 
     if (data.error) {
@@ -154,6 +159,12 @@ function resetFileUpload() {
   if (antetCard) antetCard.style.display = "none";
   if (explodeBtn) explodeBtn.style.display = "none";
   if (kclCard) kclCard.style.display = "none";
+
+  const loopCard = document.getElementById("loopCard");
+  if (loopCard) { loopCard.style.display = "none"; const ls = document.getElementById("loopStatus"); if (ls) ls.innerHTML = ""; }
+  loopSessionId = null;
+  currentUploadName = "";
+  currentUserAnswers = {};
 
   if (inferenceContent) {
     inferenceContent.innerHTML = `
@@ -294,6 +305,8 @@ async function submitAnswers() {
       }
     });
   }
+  userAnswers.part_name = userAnswers.part_name || currentPartName;
+  currentUserAnswers = userAnswers;
 
   streamLog("KCL_SYNTHESIZER", "Synthesizing KittyCAD KCL code from verified parameters...");
   streamLog("HARNESS_LOOP", "[STEP 3/4] Transmitting KCL payload to Zoo Engine API (api.zoo.dev)...");
@@ -312,6 +325,7 @@ async function submitAnswers() {
     const data = await res.json();
     currentKCLCode = data.kcl_code;
     renderDFMAAgent(data.dfma_analysis);
+    renderEngineProof(data.zoo_verification);
 
     // Render Synthesized KCL Code into UI box
     const kclCard = document.getElementById("kclCard");
@@ -323,6 +337,8 @@ async function submitAnswers() {
 
     if (data.model_ready && data.zoo_verification?.model_ready) {
       isZooModelVerified = true;
+      const loopCard = document.getElementById("loopCard");
+      if (loopCard) loopCard.style.display = "block";
       streamLog("ZOO_ENGINE_API", `HTTP 200 OK -> Geometry Verification SUCCESS: ${data.zoo_verification.compile_status}`);
       streamLog("HARNESS_LOOP", "[STEP 4/4] Zoo Engine verification CONFIRMED! 'EXPLODE TO MANUFACTURE' capability UNLOCKED.");
 
@@ -359,6 +375,43 @@ async function submitAnswers() {
   }
 }
 
+function renderEngineProof(zv) {
+  const box = document.getElementById("dfmaMetrics");
+  if (!box || !zv) return;
+
+  const real = !!zv.engine_real;
+  const statusColor = real ? "var(--term-green)" : "var(--term-amber)";
+  const statusIcon = real ? "🟢" : "🟠";
+  const statusText = real ? "REAL ENGINE MEASUREMENT" : "SIMULATED (ZOO_API_KEY required)";
+
+  const bbox = zv.bounding_box_mm || {};
+  const files = zv.engine_files || {};
+
+  let fileLinks = "";
+  if (files.step_url || files.gltf_url) {
+    fileLinks = `<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.6rem;">
+      ${files.step_url ? `<a class="btn btn-secondary" style="padding:0.35rem 0.7rem; font-size:0.72rem; border-color:var(--term-cyan); color:var(--term-cyan); text-decoration:none;" href="${files.step_url}" download>⬇️ DOWNLOAD STEP</a>` : ""}
+      ${files.gltf_url ? `<a class="btn btn-secondary" style="padding:0.35rem 0.7rem; font-size:0.72rem; border-color:var(--term-amber); color:var(--term-amber); text-decoration:none;" href="${files.gltf_url}" download>⬇️ DOWNLOAD glTF</a>` : ""}
+    </div>`;
+  }
+
+  box.insertAdjacentHTML("beforeend", `
+    <div class="antet-card" style="border-color: ${statusColor}; margin-top: 0.75rem;">
+      <div class="antet-title" style="color: ${statusColor};">⚙️ ZOO ENGINE API GEOMETRY PROOF — ${statusText}</div>
+      <div style="font-size:0.75rem; color: var(--text-dim); margin-bottom:0.5rem;">${zv.compile_status || ""}</div>
+      <div class="antet-grid">
+        <div class="antet-item">Engine Volume: <strong>${zv.volume_cm3 ?? "—"} cm³</strong></div>
+        <div class="antet-item">Surface Area: <strong>${zv.surface_area_cm2 ?? "—"} cm²</strong></div>
+        <div class="antet-item">Engine Mass: <strong>${zv.mass_grams ?? "—"} g (${zv.mass_kg ?? "—"} kg)</strong></div>
+        <div class="antet-item">Density: <strong>${zv.material_density_g_cm3 ?? "—"} g/cm³</strong></div>
+        <div class="antet-item">Bounding Box: <strong>${bbox.x ?? "—"} × ${bbox.y ?? "—"} × ${bbox.z ?? "—"} mm</strong></div>
+        <div class="antet-item">Center of Mass: <strong>${zv.center_of_mass_mm ? `${zv.center_of_mass_mm.x}, ${zv.center_of_mass_mm.y}, ${zv.center_of_mass_mm.z}` : "—"} mm</strong></div>
+      </div>
+      ${fileLinks}
+    </div>
+  `);
+}
+
 function renderDFMAAgent(dfma) {
   const scoreBox = document.getElementById("dfmaScore");
   const metricsBox = document.getElementById("dfmaMetrics");
@@ -387,6 +440,172 @@ function renderDFMAAgent(dfma) {
         </div>
       </div>
     `;
+  }
+}
+
+function renderLoopStatus(html) {
+  const box = document.getElementById("loopStatus");
+  if (box) box.insertAdjacentHTML("beforeend", html);
+}
+
+function renderEngineeringIteration(state) {
+  const it = state.iteration || 0;
+  const critic = state.critic || {};
+  const pass = !!critic.pass;
+  const color = pass ? "var(--term-green)" : "var(--term-red)";
+  const icon = pass ? "✅" : "❌";
+  const target = (critic.target_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
+  const measured = (critic.measured_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
+  const errs = Object.entries(critic.errors || {}).map(([d, e]) => `${d} ${e}%`).join(", ");
+
+  renderLoopStatus(`
+    <div class="antet-card" style="border-color: ${color}; padding: 0.6rem;">
+      <div style="font-size: 0.8rem; font-weight: 700; color: ${color};">
+        ${icon} ITERATION ${it} — ${pass ? "ENVELOPE MATCH" : "CRITIC REJECTED"}
+      </div>
+      <div style="font-size: 0.72rem; color: var(--text-main); margin-top: 0.2rem;">
+        Measured: <strong>${measured}</strong> mm vs Target: <strong>${target}</strong> mm<br>
+        Errors: ${errs} (tolerance ${critic.tolerance_pct ?? 20}%) | Total Mass: <strong>${state.total_mass_g ?? "—"} g</strong>
+      </div>
+      ${!pass && critic.feedback ? `<div style="font-size: 0.7rem; color: var(--term-amber); margin-top: 0.25rem; font-style: italic;">↻ feeding feedback: ${String(critic.feedback).slice(0, 140)}...</div>` : ""}
+    </div>
+  `);
+}
+
+function renderEngineeringFinal(state) {
+  const container = document.getElementById("positionsContainer");
+  if (!container) return;
+  const meas = state.measurements || [];
+  const props = (state.proposal && state.proposal.parts) || [];
+  const target = (state.critic?.target_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
+  const measured = (state.critic?.measured_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
+  const errs = Object.entries(state.critic?.errors || {}).map(([d, e]) => `${d}: ${e}%`).join("  ");
+  const drawing = (state.drawings && state.drawings[0]) || null;
+  const kclCode = (state.proposal?.parts && state.proposal.parts[0]?.kcl_code) || state.kcl_code || "";
+
+  const kclRow = kclCode ? `
+    <div style="margin-top: 0.75rem;">
+      <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.4rem;">
+        💻 AUTHENTIC KCL — WRITTEN & APPROVED BY THE ZOO KCL AGENT (Zookeeper edit_kcl_code)
+      </div>
+      <div class="code-editor" style="height: 200px; font-size: 0.75rem; line-height: 1.4; color: var(--term-cyan); margin-bottom: 0.5rem;">${escapeHtml(kclCode)}</div>
+    </div>` : "";
+
+  const rows = meas.map((m, i) => {
+    const p = props[i] || {};
+    const geom = p.shape === "cylinder"
+      ? `R${p.radius_mm ?? ""} x T${p.T_mm ?? ""}`
+      : `${p.L_mm ?? ""} x ${p.W_mm ?? ""} x ${p.T_mm ?? ""}`;
+    const engine = m.engine_real
+      ? `<span style="color:var(--term-green);font-weight:700;">REAL</span>`
+      : `<span style="color:var(--term-amber);">EST</span>`;
+    return `
+      <tr style="border-bottom: 1px solid var(--term-border);">
+        <td style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">${m.part_id || "POZ"}</td>
+        <td style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">${m.name || ""}</td>
+        <td style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">${p.shape || m.shape || ""}</td>
+        <td style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">${geom}</td>
+        <td style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">${m.mass_grams ?? "—"} g</td>
+        <td style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">${m.volume_cm3 ?? "—"} cm³</td>
+        <td style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">${engine}</td>
+      </tr>`;
+  }).join("");
+
+  container.innerHTML = `
+    <div class="antet-card" style="border-color: var(--term-green);">
+      <div class="antet-title" style="color: var(--term-green);">✅ AGENTIC ENGINEERING LOOP CONVERGED — DRAWING ENVELOPE REPRODUCED</div>
+      <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.6rem;">
+        Zookeeper engineer proposal -> Zoo Engine measured every part for real -> critic confirmed the
+        assembly bbox after ${state.iteration} iteration(s).
+      </div>
+      <div class="antet-grid">
+        <div class="antet-item">Target Envelope: <strong>${target}</strong> mm</div>
+        <div class="antet-item">Measured Envelope: <strong>${measured}</strong> mm</div>
+        <div class="antet-item">Dimension Errors: <strong style="color:var(--term-green);">${errs || "0%"}</strong></div>
+        <div class="antet-item">Total Mass: <strong>${state.total_mass_g ?? "—"} g</strong></div>
+        <div class="antet-item">Parts: <strong>${meas.length}</strong></div>
+        <div class="antet-item">Material: <strong>${state.material || "—"}</strong></div>
+      </div>
+      <div style="font-size: 0.75rem; color: var(--text-dim); margin: 0.6rem 0 0.4rem;">PER-PART REAL ENGINE MEASUREMENTS:</div>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr style="color: var(--term-cyan); font-size: 0.72rem; text-align: left;">
+          <th style="padding: 0.3rem 0.5rem;">POZ</th><th>NAME</th><th>SHAPE</th><th>GEOMETRY (mm)</th><th>MASS</th><th>VOLUME</th><th>ENGINE</th>
+        </tr>
+        ${rows}
+      </table>
+      ${kclRow}
+      ${drawing ? `
+        <div style="margin-top: 0.75rem;">
+          <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-amber); margin-bottom: 0.4rem;">📐 GENERATED 2D TECHNICAL DRAWING (FINAL)</div>
+          <a href="${drawing.url}" target="_blank">
+            <img src="${drawing.url}" alt="2D Technical Drawing" style="max-width: 100%; border: 1px solid var(--term-border); border-radius: 4px;">
+          </a>
+        </div>` : ""}
+    </div>
+  `;
+}
+
+async function startEngineeringLoop() {
+  if (loopRunning) return;
+  if (!currentEvalState) { alert("Upload & inspect a drawing first."); return; }
+
+  loopRunning = true;
+  const btn = document.getElementById("loopBtn");
+  if (btn) { btn.disabled = true; btn.style.opacity = 0.6; }
+  const statusBox = document.getElementById("loopStatus");
+  if (statusBox) statusBox.innerHTML = "";
+
+  streamLog("AGENT_LOOP", "POST /api/engineering-loop/start -> Opening Zookeeper engineering session...");
+  try {
+    const res = await fetch("/api/engineering-loop/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        initial_eval: currentEvalState || {},
+        user_answers: currentUserAnswers || {},
+        upload_name: currentUploadName
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "session start failed");
+    loopSessionId = data.session_id;
+    streamLog("AGENT_LOOP", `Session opened (${loopSessionId}). Target envelope: ${(data.state?.target_bbox || []).join(" × ")} mm.`);
+    await runEngineeringIterations();
+  } catch (err) {
+    console.error(err);
+    streamLog("AGENT_LOOP_ERROR", err.message);
+    alert("Engineering loop failed: " + err.message);
+  } finally {
+    loopRunning = false;
+    if (btn) { btn.disabled = false; btn.style.opacity = 1; }
+  }
+}
+
+async function runEngineeringIterations() {
+  while (loopSessionId) {
+    streamLog("AGENT_LOOP", "Iterating: Zookeeper proposes -> Zoo Engine measures -> critic verdict...");
+    const res = await fetch("/api/engineering-loop/iterate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: loopSessionId })
+    });
+    const data = await res.json();
+    const state = data.state;
+    if (!state) throw new Error("no state returned");
+    renderEngineeringIteration(state);
+    if (data.error) {
+      streamLog("AGENT_LOOP_ERROR", String(data.error));
+      alert("Engineering loop error: " + data.error);
+      break;
+    }
+    if (state.final || state.status === "error") {
+      if (state.final) {
+        streamLog("AGENT_LOOP", "CONVERGED. Rendering per-part engine measurements + 2D technical drawing.");
+        renderEngineeringFinal(state);
+      }
+      loopSessionId = null;
+      break;
+    }
   }
 }
 
@@ -610,6 +829,11 @@ function initActionButtons() {
   const explodeBtn = document.getElementById("explodeBtn");
   if (explodeBtn) {
     explodeBtn.addEventListener("click", handleExplodeAssembly);
+  }
+
+  const loopBtn = document.getElementById("loopBtn");
+  if (loopBtn) {
+    loopBtn.addEventListener("click", startEngineeringLoop);
   }
 
   const copyKclBtn = document.getElementById("copyKclBtn");

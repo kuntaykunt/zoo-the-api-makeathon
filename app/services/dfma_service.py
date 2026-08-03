@@ -11,10 +11,11 @@ class DFMAService:
             return 4.43
         return 7.85 if "st" in m else 2.70
 
-    def analyze_manufacturing(self, kcl_code: str, part_info: dict) -> dict:
+    def analyze_manufacturing(self, kcl_code: str, part_info: dict, engine_metrics: dict = None) -> dict:
         """
         Calculates detailed Volume, Mass, Material Density, Manufacturing Cycle Times (Hours/Min),
         and DFMA Constraint Rules for the DFMA Agent.
+        When real Zoo Engine metrics are available they override the simulated geometry values.
         """
         material = part_info.get("material") or "St37-2"
         thickness = float(part_info.get("thickness_mm", 2.0))
@@ -23,15 +24,67 @@ class DFMAService:
         # Material Density lookup
         density_g_cm3 = self.get_density(material)
 
-        # Geometric Calculations (Simulated bounding 140x90mm with 2x 50mm flanges)
-        plate_area_cm2 = (14.0 * 9.0) + (2 * 9.0 * 5.0) # ~216 cm2
-        volume_cm3 = round(plate_area_cm2 * (thickness / 10.0), 2)
-        mass_grams = round(volume_cm3 * density_g_cm3, 2)
+        # Geometric Calculations — prefer REAL Zoo Engine measured geometry when present
+        if engine_metrics:
+            volume_cm3 = round(float(engine_metrics.get("volume_cm3", 0.0)), 2)
+            mass_grams = round(float(engine_metrics.get("mass_grams", 0.0)), 2)
+        else:
+            plate_area_cm2 = (14.0 * 9.0) + (2 * 9.0 * 5.0)  # ~216 cm2
+            volume_cm3 = round(plate_area_cm2 * (thickness / 10.0), 2)
+            mass_grams = round(volume_cm3 * density_g_cm3, 2)
         mass_kg = round(mass_grams / 1000.0, 3)
 
-        # DFMA Constraint Rules
+        # DFMA Constraint Rules — score reacts to real engine geometry
         dfma_warnings = []
-        dfma_score = 95
+        dfma_score = 100
+
+        if engine_metrics and engine_metrics.get("engine_real"):
+            volume_cm3_val = float(engine_metrics.get("volume_cm3", 0.0))
+            mass_grams_val = float(engine_metrics.get("mass_grams", 0.0))
+            bb = engine_metrics.get("bounding_box_mm", {})
+            bb_x = float(bb.get("x", 0))
+            bb_y = float(bb.get("y", 0))
+            bb_z = float(bb.get("z", 0))
+            envelope_mm3 = bb_x * bb_y * bb_z if bb_x and bb_y and bb_z else 0
+
+            # Large-volume penalty: complex shapes are harder to manufacture
+            if volume_cm3_val > 100:
+                dfma_score -= 10
+                dfma_warnings.append({
+                    "rule": "Large Volume Complexity",
+                    "severity": "warning",
+                    "message": f"Volume {volume_cm3_val:.1f} cm³ exceeds 100 cm³ — higher risk of warpage and fixturing challenges."
+                })
+            elif volume_cm3_val < 1:
+                dfma_score -= 8
+                dfma_warnings.append({
+                    "rule": "Micro-feature Fragility",
+                    "severity": "warning",
+                    "message": f"Volume {volume_cm3_val:.2f} cm³ is very small — thin walls or fine features may not survive handling."
+                })
+
+            # Mass penalty: heavy parts need robust tooling
+            if mass_grams_val > 500:
+                dfma_score -= 5
+                dfma_warnings.append({
+                    "rule": "Heavy Part Handling",
+                    "severity": "warning",
+                    "message": f"Mass {mass_grams_val:.0f} g exceeds 500 g — requires reinforced fixtures and handling equipment."
+                })
+
+            # Envelope ratio: very flat or very tall parts get penalized
+            if envelope_mm3 > 0:
+                volume_ratio = (volume_cm3_val * 1000) / envelope_mm3  # fill fraction
+                if volume_ratio < 0.05:
+                    dfma_score -= 7
+                    dfma_warnings.append({
+                        "rule": "Low Envelope Utilization",
+                        "severity": "warning",
+                        "message": f"Part fill ratio {volume_ratio*100:.0f}% — very thin or open structure; prone to vibration during machining."
+                    })
+        else:
+            # Simulated path: no geometry penalty
+            pass
 
         min_hole_dist_to_bend = thickness * 2.0
         dfma_warnings.append({
@@ -123,7 +176,8 @@ class DFMAService:
             "total_cycle_time_hours": total_time_hours,
             "total_setup_time_min": total_setup_min,
             "dfma_warnings": dfma_warnings,
-            "manufacturing_operations": manufacturing_operations
+            "manufacturing_operations": manufacturing_operations,
+            "engine_measured": bool(engine_metrics and engine_metrics.get("engine_real"))
         }
 
 dfma_service = DFMAService()

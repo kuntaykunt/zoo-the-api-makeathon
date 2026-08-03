@@ -10,6 +10,7 @@ from app.config import config
 from app.services.qwen_service import qwen_service
 from app.services.zoo_service import zoo_service
 from app.services.dfma_service import dfma_service
+from app.services.engineering_loop import engineering_loop
 
 app = FastAPI(
     title="Zoo Auto-CAD & DFMA Pipeline",
@@ -35,6 +36,14 @@ class ExplodeAssemblyRequest(BaseModel):
 
 class VerifyZooModelRequest(BaseModel):
     kcl_code: str
+
+class EngineeringStartRequest(BaseModel):
+    initial_eval: dict
+    user_answers: dict
+    upload_name: str = ""
+
+class EngineeringIterateRequest(BaseModel):
+    session_id: str
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -73,8 +82,8 @@ async def answer_questions(payload: UserAnswerRequest):
     Loop Step 2 & 3: Submit answers, synthesize KCL, query Zoo Engine API readiness.
     """
     kcl_res = qwen_service.generate_kcl_from_answers(payload.initial_eval, payload.user_answers)
-    zoo_verify = zoo_service.verify_geometry_readiness(kcl_res["kcl_code"])
-    dfma_res = dfma_service.analyze_manufacturing(kcl_res["kcl_code"], kcl_res)
+    zoo_verify = zoo_service.verify_geometry_readiness(kcl_res["kcl_code"], kcl_res)
+    dfma_res = dfma_service.analyze_manufacturing(kcl_res["kcl_code"], kcl_res, zoo_verify)
 
     return JSONResponse({
         "status": "success",
@@ -89,7 +98,7 @@ async def answer_questions(payload: UserAnswerRequest):
 
 @app.post("/api/verify-zoo-model")
 async def verify_zoo_model(payload: VerifyZooModelRequest):
-    res = zoo_service.verify_geometry_readiness(payload.kcl_code)
+    res = zoo_service.verify_geometry_readiness(payload.kcl_code, {"material": "St37-2"})
     return JSONResponse(res)
 
 
@@ -101,6 +110,36 @@ async def explode_assembly(payload: ExplodeAssemblyRequest):
         "sub_part_count": len(sub_parts),
         "parts": sub_parts
     })
+
+
+@app.post("/api/engineering-loop/start")
+async def engineering_start(payload: EngineeringStartRequest):
+    """
+    Agentic Loop Step 1: open an engineering session. Zookeeper (Agent API) acts
+    as the design engineer, Zoo Engine as the measuring instrument, and a critic
+    enforces the drawing envelope.
+    """
+    name = payload.upload_name or payload.initial_eval.get("file_name", "drawing.pdf")
+    path = f"app/static/uploads/{os.path.basename(name)}"
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"upload file not found: {name}")
+    session_id = engineering_loop.create_session(payload.initial_eval, payload.user_answers, path)
+    return JSONResponse({"session_id": session_id, "state": engineering_loop.get_state(session_id)})
+
+
+@app.post("/api/engineering-loop/iterate")
+async def engineering_iterate(payload: EngineeringIterateRequest):
+    """Agentic Loop Step 2: run one engineer->measure->critic iteration."""
+    res = engineering_loop.run_iteration(payload.session_id)
+    return JSONResponse(res)
+
+
+@app.get("/api/engineering-loop/state/{session_id}")
+async def engineering_state(session_id: str):
+    state = engineering_loop.get_state(session_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    return JSONResponse(state)
 
 
 @app.get("/api/health")
