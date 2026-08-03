@@ -448,22 +448,30 @@ body {
   50% { opacity: 0.4; transform: scale(0.8); }
 }
 
-/* Terminal sliding activity indicator */
+/* Terminal sliding activity indicator - blade runner back-and-forth */
 .terminal-active-bar {
   position: absolute;
   top: 0;
   left: 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--term-cyan), var(--term-green), var(--term-cyan));
-  background-size: 200% 100%;
-  animation: slide-bar 1.5s linear infinite;
+  background: linear-gradient(90deg, transparent, var(--term-cyan), var(--term-green), var(--term-cyan), transparent);
+  background-size: 300% 100%;
+  animation: slide-bar-blade 2s ease-in-out infinite alternate;
   border-radius: 0 0 2px 2px;
   transition: width 0.3s ease;
 }
 
-@keyframes slide-bar {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 200% 0%; }
+@keyframes slide-bar-blade {
+  0% {
+    background-position: 0% 50%;
+    left: 0;
+    width: 60%;
+  }
+  100% {
+    background-position: 100% 50%;
+    left: 40%;
+    width: 60%;
+  }
 }
 
 .footer-terminal {

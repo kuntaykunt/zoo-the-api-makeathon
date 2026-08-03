@@ -173,7 +173,6 @@ function resetFileUpload() {
   const explodeBtn = document.getElementById("explodeBtn");
   const positionsContainer = document.getElementById("positionsContainer");
   const inferenceContent = document.getElementById("inferenceContent");
-  const kclCard = document.getElementById("kclCard");
 
   if (fileInput) fileInput.value = "";
   if (dropzone) dropzone.style.display = "block";
@@ -181,7 +180,6 @@ function resetFileUpload() {
   if (gatekeeperCard) gatekeeperCard.style.display = "none";
   if (antetCard) antetCard.style.display = "none";
   if (explodeBtn) explodeBtn.style.display = "none";
-  if (kclCard) kclCard.style.display = "none";
 
   const loopCard = document.getElementById("loopCard");
   if (loopCard) { loopCard.style.display = "none"; const ls = document.getElementById("loopStatus"); if (ls) ls.innerHTML = ""; }
@@ -353,14 +351,6 @@ async function submitAnswers() {
     currentKCLCode = data.kcl_code;
     renderDFMAAgent(data.dfma_analysis);
     renderEngineProof(data.zoo_verification);
-
-    // Render Synthesized KCL Code into UI box with syntax highlighting
-    const kclCard = document.getElementById("kclCard");
-    const kclCodeDisplay = document.getElementById("kclCodeDisplay");
-    if (kclCard && kclCodeDisplay) {
-      kclCard.style.display = "block";
-      kclCodeDisplay.innerHTML = highlightKCL(currentKCLCode);
-    }
 
     if (data.model_ready && data.zoo_verification?.model_ready) {
       isZooModelVerified = true;
@@ -613,7 +603,12 @@ async function startEngineeringLoop() {
 
 async function runEngineeringIterations() {
   while (loopSessionId) {
-    streamLog("AGENT_LOOP", "Iterating: Zookeeper proposes -> Zoo Engine measures -> critic verdict...");
+    const it = (loopSessionId && typeof window._loopIter === 'number') ? ++window._loopIter : (window._loopIter = 1);
+    streamLog("AGENT_LOOP", `── ITERATION ${it} ──`);
+    streamLog("ZOOKEEPER", "🔧 Tool: open(session) → reading drawing context...");
+    streamLog("ZOOKEEPER", "🔧 Tool: prompt(mode=thoughtful) → proposing part breakdown...");
+    streamLog("ENGINE_MEASURE", "🔧 Tool: /file/volume, /file/surface-area, /file/mass → measuring each part...");
+
     const res = await fetch("/api/engineering-loop/iterate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -622,7 +617,22 @@ async function runEngineeringIterations() {
     const data = await res.json();
     const state = data.state;
     if (!state) throw new Error("no state returned");
+
+    // Log reasoning from trace
+    const trace = state.trace || [];
+    const latestTrace = trace.filter(t => t.iteration === state.iteration);
+    latestTrace.forEach(t => {
+      if (t.event === "engineer") {
+        streamLog("ZOOKEEPER", `💡 Reasoning: ${t.detail.slice(0, 120)}`);
+      } else if (t.event === "critic") {
+        const pass = t.data?.critic?.pass;
+        streamLog("CRITIC", `${pass ? '✅ PASS' : '❌ FAIL'} — ${t.detail.slice(0, 120)}`);
+      }
+    });
+
     renderEngineeringIteration(state);
+    showTerminalActivity(4000);
+
     if (data.error) {
       streamLog("AGENT_LOOP_ERROR", String(data.error));
       alert("Engineering loop error: " + data.error);
@@ -630,13 +640,16 @@ async function runEngineeringIterations() {
     }
     if (state.final || state.status === "error") {
       if (state.final) {
-        streamLog("AGENT_LOOP", "CONVERGED. Rendering per-part engine measurements + 2D technical drawing.");
+        streamLog("AGENT_LOOP", "✅ CONVERGED — Drawing envelope reproduced. Rendering 2D technical drawing.");
+        streamLog("ZOO_KCL_AGENT", "🔧 Tool: edit_kcl_code → writing authentic KittyCAD KCL...");
+        streamLog("DRAWING_SVC", "🔧 Tool: render_sheet → generating orthographic views + BOM...");
         renderEngineeringFinal(state);
       }
       loopSessionId = null;
       break;
     }
   }
+  window._loopIter = 0;
 }
 
 async function handleExplodeAssembly() {
@@ -814,32 +827,44 @@ function escapeHtml(str) {
 }
 
 function launchZooStudioWeb(idx, posId) {
-  const kclCode = window[`_kcl_pos_${idx}`] || currentKCLCode || "";
-  const targetUrl = "https://app.zoo.dev";
+  let kclCode = window[`_kcl_pos_${idx}`] || currentKCLCode || "";
 
-  // Direct sync window open to app.zoo.dev
-  window.open(targetUrl, "_blank");
+  // Clean KCL: strip markdown fences, backticks, leading/trailing whitespace
+  kclCode = kclCode.replace(/```kcl/g, "").replace(/```/g, "").replace(/`/g, "").trim();
+
+  const targetUrl = "https://app.zoo.dev";
 
   if (navigator.clipboard && kclCode) {
     navigator.clipboard.writeText(kclCode).then(() => {
       streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Opening Zoo Web Studio (${targetUrl})...`);
+      // Open after clipboard ready
+      window.open(targetUrl, "_blank");
       alert(`✅ KCL code for '${posId}' copied to clipboard!\n\nOpening Zoo Web Studio (app.zoo.dev). Press Cmd+V / Ctrl+V to paste into editor.`);
     }).catch(err => {
-      streamLog("ZOO_STUDIO", `Opening Zoo Web Studio (${targetUrl})...`);
+      streamLog("ZOO_STUDIO", `Clipboard failed for '${posId}', opening Zoo Web Studio anyway...`);
+      window.open(targetUrl, "_blank");
     });
+  } else {
+    streamLog("ZOO_STUDIO", `No KCL code available for '${posId}', opening Zoo Web Studio...`);
+    window.open(targetUrl, "_blank");
   }
 }
 
 function launchZooStudioApp(idx, posId) {
-  const kclCode = window[`_kcl_pos_${idx}`] || currentKCLCode || "";
-  
+  let kclCode = window[`_kcl_pos_${idx}`] || currentKCLCode || "";
+
+  // Clean KCL: strip markdown fences, backticks
+  kclCode = kclCode.replace(/```kcl/g, "").replace(/```/g, "").replace(/`/g, "").trim();
+
   if (navigator.clipboard && kclCode) {
     navigator.clipboard.writeText(kclCode).then(() => {
-      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Launching Zoo Desktop App ('Zoo Design Studio.app')...`);
+      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Launching Zoo Desktop App...`);
     });
   }
 
   streamLog("ZOO_STUDIO", `Launching Desktop App via zoo-studio:// for '${posId}'...`);
+  // Trigger protocol handler
+  window.location.href = "zoo-studio://";
 }
 
 function launchZooStudio(idx, posId) {
@@ -870,18 +895,6 @@ function initActionButtons() {
   const loopBtn = document.getElementById("loopBtn");
   if (loopBtn) {
     loopBtn.addEventListener("click", startEngineeringLoop);
-  }
-
-  const copyKclBtn = document.getElementById("copyKclBtn");
-  if (copyKclBtn) {
-    copyKclBtn.addEventListener("click", () => {
-      if (currentKCLCode && navigator.clipboard) {
-        navigator.clipboard.writeText(currentKCLCode).then(() => {
-          streamLog("KCL_SYNTHESIZER", "Assembly KCL code copied to clipboard!");
-          alert("✅ Synthesized Assembly KCL code copied to clipboard!");
-        });
-      }
-    });
   }
 }
 
