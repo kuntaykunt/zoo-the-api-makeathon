@@ -20,7 +20,6 @@ let systemActiveTimeout = null;
 function showTerminalActivity(durationMs = 3000) {
   const bar = document.getElementById("terminalActiveBar");
   const beam = document.getElementById("terminalLightBeam");
-  const gear = document.getElementById("systemGear");
   if (bar) bar.classList.add("active");
   if (beam) beam.classList.add("active");
   if (gear) gear.classList.add("active");
