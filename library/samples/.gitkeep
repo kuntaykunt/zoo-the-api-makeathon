@@ -1,0 +1,3 @@
+# Drop technical drawing samples (PNG/JPG/PDF) here. They are auto-imported
+# into the Drawing Library on first load. Images are gitignored; the folder
+# structure is kept via this .gitkeep file.

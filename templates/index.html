@@ -26,6 +26,8 @@
       <div class="pill">
         🤖 QWEN-VL VISION: ACTIVE
       </div>
+      <button class="nav-btn" id="keysBtn">🔑 KEYS</button>
+      <button class="nav-btn" id="libraryBtn">📚 LIBRARY</button>
     </div>
   </header>
 
@@ -172,6 +174,48 @@
   </footer>
 
   <!-- Spinning Gear Indicator (bottom-right) -->
+
+  <!-- KEYS MODAL -->
+  <div class="modal-overlay" id="keysModal" style="display: none;">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span>🔑 API KEYS — ENCRYPTED STORAGE</span>
+        <button class="modal-close" id="keysClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="key-status" id="keysStatus"></div>
+        <label class="modal-label">Qwen API Key (DashScope / OpenAI compatible)</label>
+        <input type="password" class="modal-input" id="qwenKeyInput" placeholder="Paste Qwen API key" autocomplete="off">
+        <label class="modal-label">Zoo API Key (zoo.dev)</label>
+        <input type="password" class="modal-input" id="zooKeyInput" placeholder="Paste Zoo API key" autocomplete="off">
+        <label class="modal-label">Qwen Base URL <span style="opacity:.5">(optional)</span></label>
+        <input type="text" class="modal-input" id="qwenUrlInput" placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1">
+        <label class="modal-label">Zoo Base URL <span style="opacity:.5">(optional)</span></label>
+        <input type="text" class="modal-input" id="zooUrlInput" placeholder="https://api.zoo.dev">
+        <div class="modal-note">Keys are encrypted with Fernet (AES) and stored in <code>.env.enc</code>. The secret key lives in <code>.key</code> (gitignored). Plaintext is never written to disk.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="keysSaveBtn">💾 ENCRYPT & SAVE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIBRARY MODAL -->
+  <div class="modal-overlay" id="libraryModal" style="display: none;">
+    <div class="modal-box modal-wide">
+      <div class="modal-header">
+        <span>📚 DRAWING LIBRARY</span>
+        <button class="modal-close" id="libraryClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="libraryList" class="library-list"></div>
+        <div id="libraryDetail" class="library-detail" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="libraryBackBtn" style="display: none;">← BACK TO LIST</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/js/app.js"></script>
 </body>

@@ -6,12 +6,19 @@ venv/
 .venv/
 env/
 *.env
+.env.enc
+.key
+library.db
 
 # Uploads & Temp Cache
 app/static/uploads/*
 !app/static/uploads/.gitkeep
 app/static/renders/*
 !app/static/renders/.gitkeep
+
+# Sample drawings live in the repo (gitignored binaries only)
+library/samples/*
+!library/samples/.gitkeep
 
 # macOS
 .DS_Store

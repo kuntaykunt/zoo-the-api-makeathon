@@ -6,6 +6,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.config import config
@@ -13,6 +14,7 @@ from app.services.qwen_service import qwen_service
 from app.services.zoo_service import zoo_service
 from app.services.dfma_service import dfma_service
 from app.services.engineering_loop import engineering_loop
+from app.services import library_service
 
 app = FastAPI(
     title="Zoo Auto-CAD & DFMA Pipeline",
@@ -24,8 +26,10 @@ app = FastAPI(
 os.makedirs("app/static/css", exist_ok=True)
 os.makedirs("app/static/js", exist_ok=True)
 os.makedirs("app/static/uploads", exist_ok=True)
+os.makedirs(os.path.join("library", "samples"), exist_ok=True)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/library/samples", StaticFiles(directory=os.path.join("library", "samples")), name="samples")
 templates = Jinja2Templates(directory="templates")
 
 class UserAnswerRequest(BaseModel):
@@ -79,6 +83,20 @@ async def upload_drawing(file: UploadFile = File(...)):
         eval_result["file_name"] = file.filename or stored_name
         eval_result["file_url"] = f"/static/uploads/{stored_name}"
 
+        # Persist to the Library so the drawing can be recalled later.
+        try:
+            tb = eval_result.get("title_block", {}) or {}
+            library_service.save_record({
+                "title": tb.get("part_name") or (file.filename or stored_name).split(".")[0],
+                "file_name": file.filename or stored_name,
+                "file_url": eval_result["file_url"],
+                "source": "upload",
+                "title_block": tb,
+                "detected_parameters": eval_result.get("detected_parameters"),
+            })
+        except Exception as lib_err:
+            print(f"[Library] save note: {lib_err}")
+
         return JSONResponse(eval_result)
 
     except Exception as e:
@@ -94,6 +112,29 @@ async def answer_questions(payload: UserAnswerRequest):
     kcl_res = qwen_service.generate_kcl_from_answers(payload.initial_eval, payload.user_answers)
     zoo_verify = zoo_service.verify_geometry_readiness(kcl_res["kcl_code"], kcl_res)
     dfma_res = dfma_service.analyze_manufacturing(kcl_res["kcl_code"], kcl_res, zoo_verify)
+
+    # Update the matching Library record with KCL + DFMA + Zoo verification.
+    try:
+        tb = payload.initial_eval.get("title_block", {}) or {}
+        fname = payload.initial_eval.get("file_name")
+        existing = library_service.list_records(limit=10000)
+        match = next((r for r in existing if r.get("file_name") == fname), None)
+        rec = {
+            "title": tb.get("part_name") or (fname or "Unnamed").split(".")[0],
+            "file_name": fname,
+            "file_url": payload.initial_eval.get("file_url"),
+            "source": "upload",
+            "title_block": tb,
+            "detected_parameters": payload.initial_eval.get("detected_parameters"),
+            "kcl_code": kcl_res["kcl_code"],
+            "dfma_analysis": dfma_res,
+            "zoo_verification": zoo_verify,
+        }
+        if match:
+            rec["id"] = match["id"]
+        library_service.save_record(rec)
+    except Exception as lib_err:
+        print(f"[Library] update note: {lib_err}")
 
     return JSONResponse({
         "status": "success",
@@ -159,3 +200,83 @@ async def health_check():
         "zoo_api": zoo_service.check_health(),
         "qwen_configured": bool(config.QWEN_API_KEY and not config.QWEN_API_KEY.startswith("your_"))
     }
+
+
+# --------------------------------------------------------------------------- #
+#  API Keys (encrypted persistence)                                          #
+# --------------------------------------------------------------------------- #
+class KeysRequest(BaseModel):
+    qwen_api_key: str = ""
+    zoo_api_key: str = ""
+    qwen_base_url: str = ""
+    zoo_base_url: str = ""
+
+
+@app.get("/api/keys")
+async def get_keys():
+    """Return key status + masked previews (never the raw secret)."""
+    return {
+        "qwen_configured": config.has_qwen(),
+        "zoo_configured": config.has_zoo(),
+        "qwen_preview": config.masked(config.QWEN_API_KEY),
+        "zoo_preview": config.masked(config.ZOO_API_KEY),
+        "qwen_base_url": config.QWEN_BASE_URL,
+        "zoo_base_url": config.ZOO_BASE_URL,
+    }
+
+
+@app.post("/api/keys")
+async def save_keys(payload: KeysRequest):
+    """Encrypt and persist the supplied API keys."""
+    # Only overwrite when a non-empty value is provided (don't blank existing).
+    qwen = payload.qwen_api_key.strip() if payload.qwen_api_key else config.QWEN_API_KEY
+    zoo = payload.zoo_api_key.strip() if payload.zoo_api_key else config.ZOO_API_KEY
+    config.save_keys(qwen, zoo, payload.qwen_base_url.strip(), payload.zoo_base_url.strip())
+    return {
+        "status": "saved",
+        "qwen_configured": config.has_qwen(),
+        "zoo_configured": config.has_zoo(),
+        "qwen_preview": config.masked(config.QWEN_API_KEY),
+        "zoo_preview": config.masked(config.ZOO_API_KEY),
+    }
+
+
+# --------------------------------------------------------------------------- #
+#  Library (persisted drawing records)                                        #
+# --------------------------------------------------------------------------- #
+class LibrarySaveRequest(BaseModel):
+    record_id: int = None
+    title: str = ""
+    file_name: str = ""
+    file_url: str = ""
+    source: str = "upload"
+    title_block: dict = None
+    detected_parameters: dict = None
+    kcl_code: str = ""
+    dfma_analysis: dict = None
+    zoo_verification: dict = None
+
+
+@app.get("/api/library")
+async def library_list():
+    records = library_service.list_records()
+    imported = library_service.import_samples()
+    if imported:
+        records = library_service.list_records()
+    return {"records": records, "imported_samples": imported}
+
+
+@app.get("/api/library/{record_id}")
+async def library_get(record_id: int):
+    rec = library_service.get_record(record_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="record not found")
+    return rec
+
+
+@app.post("/api/library/save")
+async def library_save(payload: LibrarySaveRequest):
+    rid = library_service.save_record(payload.model_dump())
+    return {"id": rid, "status": "saved"}
+
+

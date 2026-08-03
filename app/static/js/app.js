@@ -1060,7 +1060,177 @@ function initActionButtons() {
   if (loopBtn) {
     loopBtn.addEventListener("click", startEngineeringLoop);
   }
+
+  // Navbar: KEYS + LIBRARY modals
+  const keysBtn = document.getElementById("keysBtn");
+  if (keysBtn) keysBtn.addEventListener("click", openKeysModal);
+  const keysClose = document.getElementById("keysClose");
+  if (keysClose) keysClose.addEventListener("click", () => closeModal("keysModal"));
+  const keysSaveBtn = document.getElementById("keysSaveBtn");
+  if (keysSaveBtn) keysSaveBtn.addEventListener("click", saveKeys);
+
+  const libraryBtn = document.getElementById("libraryBtn");
+  if (libraryBtn) libraryBtn.addEventListener("click", openLibraryModal);
+  const libraryClose = document.getElementById("libraryClose");
+  if (libraryClose) libraryClose.addEventListener("click", () => closeModal("libraryModal"));
+  const libraryBackBtn = document.getElementById("libraryBackBtn");
+  if (libraryBackBtn) libraryBackBtn.addEventListener("click", showLibraryList);
 }
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = "none";
+}
+
+function openKeysModal() {
+  fetch("/api/keys")
+    .then(r => r.json())
+    .then(d => {
+      const st = document.getElementById("keysStatus");
+      st.innerHTML = `Qwen: ${d.qwen_configured ? "✅ <code>" + (d.qwen_preview||"") + "</code>" : "❌ not set"} &nbsp;|&nbsp; Zoo: ${d.zoo_configured ? "✅ <code>" + (d.zoo_preview||"") + "</code>" : "❌ not set"}`;
+      document.getElementById("qwenUrlInput").value = d.qwen_base_url || "";
+      document.getElementById("zooUrlInput").value = d.zoo_base_url || "";
+    })
+    .catch(() => {});
+  document.getElementById("qwenKeyInput").value = "";
+  document.getElementById("zooKeyInput").value = "";
+  document.getElementById("keysModal").style.display = "flex";
+}
+
+async function saveKeys() {
+  const qwen = document.getElementById("qwenKeyInput").value.trim();
+  const zoo = document.getElementById("zooKeyInput").value.trim();
+  const qwenUrl = document.getElementById("qwenUrlInput").value.trim();
+  const zooUrl = document.getElementById("zooUrlInput").value.trim();
+  streamLog("KEYS", "Encrypting API keys with Fernet and writing .env.enc ...");
+  try {
+    const res = await fetch("/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qwen_api_key: qwen, zoo_api_key: zoo, qwen_base_url: qwenUrl, zoo_base_url: zooUrl })
+    });
+    const d = await res.json();
+    streamLog("KEYS", `Saved. Qwen: ${d.qwen_configured ? "OK" : "unchanged"}, Zoo: ${d.zoo_configured ? "OK" : "unchanged"}`);
+    alert("✅ API keys encrypted & saved.");
+    closeModal("keysModal");
+  } catch (e) {
+    streamLog("KEYS_ERROR", e.message);
+    alert("Key save failed: " + e.message);
+  }
+}
+
+async function openLibraryModal() {
+  document.getElementById("libraryDetail").style.display = "none";
+  document.getElementById("libraryBackBtn").style.display = "none";
+  document.getElementById("libraryModal").style.display = "flex";
+  await showLibraryList();
+}
+
+async function showLibraryList() {
+  document.getElementById("libraryDetail").style.display = "none";
+  document.getElementById("libraryBackBtn").style.display = "none";
+  const list = document.getElementById("libraryList");
+  list.style.display = "flex";
+  list.innerHTML = "<div class='lib-loading'>Scanning library...</div>";
+  try {
+    const res = await fetch("/api/library");
+    const d = await res.json();
+    if (d.imported_samples) streamLog("LIBRARY", `Imported ${d.imported_samples} sample drawing(s) from repo.`);
+    if (!d.records.length) {
+      list.innerHTML = "<div class='lib-empty'>No drawings yet. Upload a technical drawing to populate the library.</div>";
+      return;
+    }
+    list.innerHTML = d.records.map(r => `
+      <div class="lib-item" data-id="${r.id}">
+        <div class="lib-thumb">${r.file_url ? `<img src="${r.file_url}" onerror="this.style.display='none'">` : "📄"}</div>
+        <div class="lib-meta">
+          <div class="lib-title">${escapeHtml(r.title || "Unnamed")}</div>
+          <div class="lib-sub">${escapeHtml(r.file_name || "")} · ${r.source || "upload"} · ${r.created_at || ""}</div>
+        </div>
+      </div>`).join("");
+    list.querySelectorAll(".lib-item").forEach(el => {
+      el.addEventListener("click", () => loadLibraryRecord(parseInt(el.dataset.id, 10)));
+    });
+  } catch (e) {
+    list.innerHTML = "<div class='lib-empty'>Failed to load library: " + escapeHtml(e.message) + "</div>";
+  }
+}
+
+async function loadLibraryRecord(id) {
+  try {
+    const res = await fetch("/api/library/" + id);
+    const rec = await res.json();
+    const list = document.getElementById("libraryList");
+    const detail = document.getElementById("libraryDetail");
+    list.style.display = "none";
+    detail.style.display = "block";
+    document.getElementById("libraryBackBtn").style.display = "inline-flex";
+
+    // Restore into the live UI state so the user can continue the pipeline.
+    const tb = rec.title_block || {};
+    const dp = rec.detected_parameters || {};
+    currentEvalState = {
+      title_block: tb,
+      detected_parameters: dp,
+      is_assembly: rec.detected_parameters ? rec.detected_parameters.is_assembly : false,
+      satisfies_requirements: true,
+      agentic_trace: ["[LIBRARY] Record restored from drawing library."],
+      questions: [{ id: "thickness", question: "Sheet thickness (mm):", default_value: String(dp.thickness_mm || "2.0") }]
+    };
+    currentUploadName = rec.file_name || "";
+    currentPartName = tb.part_name || (rec.file_name || "Part").split(".")[0];
+    currentKCLCode = rec.kcl_code || "";
+
+    let html = `<div class="lib-head">📄 ${escapeHtml(rec.title || "Unnamed")}</div>`;
+    if (rec.file_url) html += `<div class="lib-imgwrap"><img src="${rec.file_url}" onerror="this.style.display='none'"></div>`;
+    html += `<div class="antet-card" style="margin-top:.5rem;">
+      <div class="antet-title">📋 TITLE BLOCK (ANTET)</div>
+      <div class="antet-grid">
+        <div class="antet-item">Part: <strong>${escapeHtml(tb.part_name || "—")}</strong></div>
+        <div class="antet-item">DWG: <strong>${escapeHtml(tb.drawing_number || "—")}</strong></div>
+        <div class="antet-item">Material: <strong>${escapeHtml(tb.material_spec || "—")}</strong></div>
+        <div class="antet-item">Thickness: <strong>${escapeHtml(String(dp.thickness_mm || "—"))} mm</strong></div>
+      </div></div>`;
+    if (rec.kcl_code) {
+      html += `<div style="margin-top:.6rem;"><div class="antet-title" style="color:var(--term-cyan);">💻 KCL CODE</div>
+        <div class="code-editor" style="height:140px;font-size:.75rem;">${escapeHtml(rec.kcl_code)}</div></div>`;
+    }
+    if (rec.dfma_analysis) {
+      const df = rec.dfma_analysis;
+      html += `<div style="margin-top:.6rem;" class="antet-card" style="border-color:var(--term-cyan);">
+        <div class="antet-title" style="color:var(--term-cyan);">📊 DFMA</div>
+        <div class="antet-grid">
+          <div class="antet-item">Material: <strong>${escapeHtml(df.material||"—")}</strong></div>
+          <div class="antet-item">Volume: <strong>${df.volume_cm3 ?? "—"} cm³</strong></div>
+          <div class="antet-item">Mass: <strong>${df.mass_kg ?? "—"} kg</strong></div>
+          <div class="antet-item">Score: <strong>${df.dfma_score ?? "—"}%</strong></div>
+        </div></div>`;
+    }
+    html += `<button class="btn" style="margin-top:.8rem;width:100%;" onclick="applyLibraryToPipeline()">⚡ APPLY TO PIPELINE</button>`;
+    detail.innerHTML = html;
+    streamLog("LIBRARY", `Loaded record #${id} (${rec.title || "Unnamed"}) into viewer.`);
+  } catch (e) {
+    document.getElementById("libraryDetail").innerHTML = "<div class='lib-empty'>Failed: " + escapeHtml(e.message) + "</div>";
+  }
+}
+
+function applyLibraryToPipeline() {
+  if (!currentEvalState) return;
+  closeModal("libraryModal");
+  // Render as if the drawing was just inspected.
+  document.getElementById("dropzone").style.display = "none";
+  const fileCard = document.getElementById("uploadedFileCard");
+  if (fileCard) {
+    fileCard.style.display = "flex";
+    const ft = document.getElementById("fileNameText");
+    if (ft) ft.textContent = "📚 " + (currentUploadName || "Library Record");
+  }
+  renderTitleBlock(currentEvalState.title_block || {});
+  renderEvaluationGatekeeper(currentEvalState);
+  renderInferenceSummary(currentEvalState);
+  streamLog("LIBRARY", "Record applied to live pipeline. Confirm parameters to continue.");
+}
+
 
 function streamLog(caller, message) {
   const consoleBox = document.getElementById("footerTerminalLogs");
