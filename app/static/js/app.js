@@ -22,7 +22,6 @@ function showTerminalActivity(durationMs = 3000) {
   const beam = document.getElementById("terminalLightBeam");
   if (bar) bar.classList.add("active");
   if (beam) beam.classList.add("active");
-  if (gear) gear.classList.add("active");
 
   clearTimeout(terminalActivityTimeout);
   clearTimeout(systemActiveTimeout);
@@ -31,7 +30,6 @@ function showTerminalActivity(durationMs = 3000) {
     if (beam) beam.classList.remove("active");
   }, durationMs);
   systemActiveTimeout = setTimeout(() => {
-    if (gear) gear.classList.remove("active");
   }, durationMs + 2000);
 }
 
