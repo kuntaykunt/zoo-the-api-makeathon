@@ -87,7 +87,7 @@ function initUploadBox() {
 
   if (!dropzone || !fileInput) return;
 
-  dropzone.addEventListener("click", () => fileInput.click());
+  // <label for="fileInput"> handles click natively — no JS click listener needed
 
   dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
