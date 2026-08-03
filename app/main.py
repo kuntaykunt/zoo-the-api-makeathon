@@ -47,25 +47,23 @@ async def serve_dashboard(request: Request):
 async def upload_drawing(file: UploadFile = File(...)):
     """
     Loop Step 1: Upload technical drawing & execute Qwen-VL Vision Agent inspection.
+    Normalizes image format to prevent Qwen 400 InvalidParameter errors.
     """
     try:
         contents = await file.read()
         file_path = f"app/static/uploads/{file.filename}"
         with open(file_path, "wb") as f:
             f.write(contents)
-        
-        image_b64 = base64.b64encode(contents).decode("utf-8")
-        mime_type = file.content_type or "image/jpeg"
-        if mime_type == "application/pdf":
-            mime_type = "image/png"
 
-        eval_result = qwen_service.evaluate_drawing(image_b64, mime_type)
+        # Evaluate drawing via Qwen Vision Service
+        eval_result = qwen_service.evaluate_drawing(contents, file.filename)
         eval_result["file_name"] = file.filename
         eval_result["file_url"] = f"/static/uploads/{file.filename}"
 
         return JSONResponse(eval_result)
 
     except Exception as e:
+        print(f"[UploadError] {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -74,13 +72,8 @@ async def answer_questions(payload: UserAnswerRequest):
     """
     Loop Step 2 & 3: Submit answers, synthesize KCL, query Zoo Engine API readiness.
     """
-    # 1. Synthesize KCL
     kcl_res = qwen_service.generate_kcl_from_answers(payload.initial_eval, payload.user_answers)
-    
-    # 2. Query Zoo Engine API for geometry verification
     zoo_verify = zoo_service.verify_geometry_readiness(kcl_res["kcl_code"])
-    
-    # 3. Analyze DFMA Knowledge
     dfma_res = dfma_service.analyze_manufacturing(kcl_res["kcl_code"], kcl_res)
 
     return JSONResponse({
@@ -96,21 +89,13 @@ async def answer_questions(payload: UserAnswerRequest):
 
 @app.post("/api/verify-zoo-model")
 async def verify_zoo_model(payload: VerifyZooModelRequest):
-    """
-    Standalone Zoo Engine API Model Readiness Check.
-    """
     res = zoo_service.verify_geometry_readiness(payload.kcl_code)
     return JSONResponse(res)
 
 
 @app.post("/api/explode-assembly")
 async def explode_assembly(payload: ExplodeAssemblyRequest):
-    """
-    Loop Step 4: Explodes validated assembly into itemized positions (Pozlar).
-    Gated by Zoo Engine model readiness.
-    """
     sub_parts = qwen_service.explode_assembly(payload.kcl_code, payload.part_name)
-    
     return JSONResponse({
         "assembly_name": payload.part_name,
         "sub_part_count": len(sub_parts),

@@ -29,7 +29,7 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding-bottom: 140px; /* Space for fixed bottom footer console */
+  padding-bottom: 170px; /* Space for resizable footer terminal */
 }
 
 /* Header Command Bar */
@@ -99,7 +99,7 @@ body {
 /* Main Studio Layout Grid - 2 High-Readability Columns */
 .studio-grid {
   display: grid;
-  grid-template-columns: 420px 1fr;
+  grid-template-columns: 440px 1fr;
   gap: 1.25rem;
   padding: 1.25rem;
   flex: 1;
@@ -284,6 +284,17 @@ body {
   color: #fff;
 }
 
+.btn-amber {
+  background: var(--term-amber);
+  color: #000;
+  box-shadow: 0 0 10px rgba(255, 176, 0, 0.4);
+}
+
+.btn-amber:hover {
+  background: #ffd000;
+  box-shadow: 0 0 15px rgba(255, 208, 0, 0.8);
+}
+
 /* KCL Code Editor Display */
 .code-editor {
   background: #000;
@@ -344,19 +355,42 @@ body {
   justify-content: space-between;
 }
 
-/* Fixed Bottom Footer Terminal Console */
+/* Resizable Bottom Footer Terminal Console */
 .footer-terminal {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 130px;
+  height: 160px;
+  min-height: 90px;
+  max-height: 80vh;
   background: #000408;
   border-top: 2px solid var(--term-cyan);
-  box-shadow: 0 -5px 25px rgba(0, 243, 255, 0.2);
+  box-shadow: 0 -5px 25px rgba(0, 243, 255, 0.3);
   z-index: 9000;
   display: flex;
   flex-direction: column;
+  transition: height 0.05s ease-out;
+}
+
+.terminal-resize-handle {
+  height: 12px;
+  background: #020b14;
+  border-bottom: 1px solid var(--term-border);
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: var(--term-cyan);
+  letter-spacing: 2px;
+  user-select: none;
+}
+
+.terminal-resize-handle:hover {
+  background: var(--term-cyan);
+  color: #000;
+  font-weight: 800;
 }
 
 .footer-terminal-header {

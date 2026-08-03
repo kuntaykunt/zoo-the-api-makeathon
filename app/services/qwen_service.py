@@ -1,6 +1,8 @@
+import io
 import json
 import base64
 import requests
+from PIL import Image
 from app.config import config
 
 class QwenService:
@@ -9,67 +11,107 @@ class QwenService:
         self.base_url = config.QWEN_BASE_URL
         self.model = config.QWEN_MODEL
 
-    def evaluate_drawing(self, image_base64: str, mime_type: str = "image/jpeg") -> dict:
+    def normalize_image_to_jpeg_b64(self, file_bytes: bytes, original_filename: str = "") -> str:
         """
-        Agentic evaluation of technical drawing using Qwen-VL.
-        Extracts title block (antet) info, drawing parameters, agentic reasoning trace,
-        missing parameters, and verification questions.
+        Normalizes any uploaded image or PDF into a clean RGB JPEG base64 string
+        to prevent Qwen-VL 'The image format is illegal and cannot be opened' (HTTP 400) errors.
         """
+        try:
+            # Check if file is PDF
+            if original_filename.lower().endswith(".pdf") or file_bytes.startswith(b"%PDF"):
+                # Handle PDF rendering if pdf2image available, else convert image
+                try:
+                    from pdf2image import convert_from_bytes
+                    images = convert_from_bytes(file_bytes, first_page=1, last_page=1)
+                    if images:
+                        buf = io.BytesIO()
+                        images[0].convert("RGB").save(buf, format="JPEG", quality=85)
+                        return base64.b64encode(buf.getvalue()).decode("utf-8")
+                except Exception as pdf_err:
+                    print(f"[QwenService] pdf2image fallback: {pdf_err}")
+
+            # Standard Image via Pillow
+            img = Image.open(io.BytesIO(file_bytes))
+            img = img.convert("RGB")
+            
+            # Resize if overly large (>2048px) to reduce payload size & speed up vision API
+            max_size = 2048
+            if img.width > max_size or img.height > max_size:
+                img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        except Exception as e:
+            print(f"[QwenService] Image normalization error: {e}")
+            # Fallback return raw base64
+            return base64.b64encode(file_bytes).decode("utf-8")
+
+    def evaluate_drawing(self, file_bytes: bytes, original_filename: str = "") -> dict:
+        """
+        Dynamic Agentic Evaluation of technical drawings using Qwen-VL.
+        Parses title block (antet), dynamically audits missing parameters,
+        and generates questions ONLY for missing critical specifications.
+        """
+        # Normalize image to guaranteed JPEG base64
+        image_base64 = self.normalize_image_to_jpeg_b64(file_bytes, original_filename)
+
         if not self.api_key or self.api_key.startswith("your_"):
-            return self._mock_agentic_evaluation()
+            return self._mock_agentic_evaluation(original_filename)
 
         prompt = """
-You are an advanced Agentic CAD & Manufacturing Knowledge AI.
+You are an expert CAD & Manufacturing AI Inspector.
 Analyze the attached engineering technical drawing image.
 
-Perform a step-by-step agentic analysis:
-1. Extract Title Block (Antet) information if present (Drawing Name, Part Number, Revision, Material, Scale, Tolerances, Author/Company).
-2. Inspect views for completeness.
-3. Identify missing dimensions, material specifications, or sheet metal thicknesses.
-4. Synthesize questions for missing information.
+1. Inspect the Title Block (Antet) in detail:
+   - Part Name / Title
+   - Drawing / Part Number
+   - Revision
+   - Material Spec (e.g., AL 6061-T6, SS 304, Steel)
+   - Sheet Metal Thickness (mm) if indicated
+   - Scale & Tolerances
+2. Inspect the 2D orthographic projections (dimensions, hole diameters, bend lines).
+3. Determine if ALL critical manufacturing information (Material, Thickness, Dimensions) is present.
+   - If ALL critical specs are present, set "satisfies_requirements": true, "missing_information": [], "questions": [].
+   - If ANY critical spec is missing, set "satisfies_requirements": false, list the missing information, and generate specific questions.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "agentic_trace": [
-    "LOG [01]: Initializing Qwen Vision Inspection Agent v2.4...",
-    "LOG [02]: Scanning bottom-right quadrant for Title Block (Antet)...",
-    "LOG [03]: Scanned Drawing No: DWG-2026-FMS-04",
-    "LOG [04]: Checking 2D orthographic projection dimensions..."
+    "LOG [01]: Image normalized to RGB JPEG.",
+    "LOG [02]: Scanning drawing canvas & title block (antet)...",
+    "LOG [03]: Scanned Drawing No & Revision...",
+    "LOG [04]: Auditing dimensions & sheet metal thickness..."
   ],
   "title_block": {
-    "part_name": "Sheet Metal Support Bracket",
-    "drawing_number": "DWG-2026-FMS-04",
-    "revision": "Rev C",
-    "material_spec": "Aluminum 6061-T6",
+    "part_name": "Extracted Part Title",
+    "drawing_number": "DWG-NUMBER",
+    "revision": "Rev A",
+    "material_spec": "Extracted Material or Unknown",
     "scale": "1:1",
     "tolerances": "ISO 2768-m",
-    "designer": "FMS Engineering Team"
+    "designer": "Designer or Company"
   },
-  "satisfies_requirements": false,
-  "is_assembly": true,
+  "satisfies_requirements": true or false,
+  "is_assembly": true or false,
   "detected_parameters": {
-    "material": "Aluminum 6061-T6",
-    "thickness_mm": null,
+    "material": "Extracted Material",
+    "thickness_mm": 2.0 or null,
     "overall_dimensions": "140x90x50 mm",
     "hole_count": 4,
     "bends_count": 2
   },
   "missing_information": [
-    "Sheet metal plate thickness is missing in drawing annotations."
+    "List of missing specs if any"
   ],
   "questions": [
     {
       "id": "thickness",
-      "question": "Confirm Sheet Metal Thickness (mm):",
+      "question": "Specify missing parameter question:",
       "default_value": "2.0",
       "unit": "mm",
       "options": ["1.5", "2.0", "3.0", "4.0"]
-    },
-    {
-      "id": "material",
-      "question": "Confirm Alloy & Temper Material:",
-      "default_value": "Aluminum 6061-T6",
-      "options": ["Aluminum 6061-T6", "Stainless Steel 304", "Mild Steel S235", "Titanium Gr5"]
     }
   ],
   "kcl_code": ""
@@ -87,7 +129,7 @@ Respond ONLY with a valid JSON object matching this schema:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_base64}"}},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
                             {"type": "text", "text": prompt}
                         ]
                     }
@@ -99,17 +141,23 @@ Respond ONLY with a valid JSON object matching this schema:
             if res.status_code == 200:
                 data = res.json()
                 content = data["choices"][0]["message"]["content"]
-                return json.loads(content)
+                parsed = json.loads(content)
+                parsed["raw_qwen_response"] = "HTTP 200 OK (Qwen-VL Vision Analyzed)"
+                return parsed
             else:
-                return self._mock_agentic_evaluation()
+                err_text = res.text[:300]
+                print(f"[QwenService] API Error {res.status_code}: {err_text}")
+                mock_res = self._mock_agentic_evaluation(original_filename)
+                mock_res["raw_qwen_response"] = f"HTTP {res.status_code} - {err_text}"
+                return mock_res
+
         except Exception as e:
-            print(f"[QwenService] Agentic vision exception: {e}")
-            return self._mock_agentic_evaluation()
+            print(f"[QwenService] Vision exception: {e}")
+            mock_res = self._mock_agentic_evaluation(original_filename)
+            mock_res["raw_qwen_response"] = f"Client Exception: {e}"
+            return mock_res
 
     def generate_kcl_from_answers(self, initial_eval: dict, user_answers: dict) -> dict:
-        """
-        Synthesizes KittyCAD KCL code based on verified title block and user input.
-        """
         tb = initial_eval.get("title_block", {})
         part_name = user_answers.get("part_name") or tb.get("part_name") or "CAD_Part"
         thickness = float(user_answers.get("thickness", initial_eval.get("detected_parameters", {}).get("thickness_mm") or 2.0))
@@ -144,13 +192,7 @@ const mainAssembly = drawMainAssembly(thickness = {thickness})
         }
 
     def explode_assembly(self, kcl_code: str, part_name: str) -> list:
-        """
-        Explodes assembly into positions (pozlar).
-        Naming convention: [Antet Text / Part Name] - POZ-[Number]
-        Each position includes KCL snippet, metadata, and manufacturing operations.
-        """
         base_title = part_name or "Sheet Metal Support Bracket"
-
         return [
             {
                 "pos_id": "POZ-01",
@@ -158,12 +200,7 @@ const mainAssembly = drawMainAssembly(thickness = {thickness})
                 "type": "Sheet Metal (AL 6061-T6)",
                 "dimensions": "140 x 90 x 2.0 mm",
                 "mass_g": 68.0,
-                "kcl_code": f"""// Position 01 KCL Code
-// Part: {base_title} - POZ-01
-const pos01 = startSketchOn('XY')
-  |> rect(width = 140, height = 90)
-  |> extrude(length = 2.0)
-""",
+                "kcl_code": f"// Position 01 KCL Code\nconst pos01 = startSketchOn('XY') |> rect(width = 140, height = 90) |> extrude(length = 2.0)",
                 "operations": [
                   {"step": 1, "op": "Fiber Laser Cutting", "machine": "TRUMPF 3030", "time_sec": 42},
                   {"step": 2, "op": "Deburring", "machine": "Timesavers 42", "time_sec": 18},
@@ -176,12 +213,7 @@ const pos01 = startSketchOn('XY')
                 "type": "Sheet Metal (AL 6061-T6)",
                 "dimensions": "90 x 50 x 2.0 mm",
                 "mass_g": 24.5,
-                "kcl_code": f"""// Position 02 KCL Code
-// Part: {base_title} - POZ-02
-const pos02 = startSketchOn('XZ')
-  |> rect(width = 90, height = 50)
-  |> extrude(length = 2.0)
-""",
+                "kcl_code": f"// Position 02 KCL Code\nconst pos02 = startSketchOn('XZ') |> rect(width = 90, height = 50) |> extrude(length = 2.0)",
                 "operations": [
                   {"step": 1, "op": "Fiber Laser Cutting", "machine": "TRUMPF 3030", "time_sec": 28},
                   {"step": 2, "op": "Edge Conditioning", "machine": "Timesavers 42", "time_sec": 12},
@@ -194,12 +226,7 @@ const pos02 = startSketchOn('XZ')
                 "type": "Sheet Metal (AL 6061-T6)",
                 "dimensions": "90 x 50 x 2.0 mm",
                 "mass_g": 24.5,
-                "kcl_code": f"""// Position 03 KCL Code
-// Part: {base_title} - POZ-03
-const pos03 = startSketchOn('XZ')
-  |> rect(width = 90, height = 50)
-  |> extrude(length = 2.0)
-""",
+                "kcl_code": f"// Position 03 KCL Code\nconst pos03 = startSketchOn('XZ') |> rect(width = 90, height = 50) |> extrude(length = 2.0)",
                 "operations": [
                   {"step": 1, "op": "Fiber Laser Cutting", "machine": "TRUMPF 3030", "time_sec": 28},
                   {"step": 2, "op": "Edge Conditioning", "machine": "Timesavers 42", "time_sec": 12},
@@ -208,20 +235,21 @@ const pos03 = startSketchOn('XZ')
             }
         ]
 
-    def _mock_agentic_evaluation(self) -> dict:
-        """Fallback mock response."""
+    def _mock_agentic_evaluation(self, filename: str = "") -> dict:
+        # Dynamic mock depending on filename or default
+        part_title = filename.replace("_", " ").replace("-", " ").split(".")[0].title() if filename else "Sheet Metal Support Bracket"
         return {
             "agentic_trace": [
-                "[01] API_CALL: Initializing Qwen-VL Vision Agent v2.4...",
+                "[01] IMAGE_NORM: Normalized image buffer to 100% valid RGB JPEG.",
                 "[02] OCR_SCAN: Scanning title block (antet) in bottom-right corner...",
-                "[03] ANTET_MATCH: Detected 'FMS FORM METAL SANAYI' title block.",
+                f"[03] ANTET_MATCH: Extracted part title: '{part_title}'.",
                 "[04] ANTET_DATA: DWG No: DWG-2026-FMS-04 | Rev: C | Scale 1:1.",
                 "[05] DIM_AUDIT: Verified orthographic projection views (Front, Top, Isometric).",
-                "[06] PARAM_CHECK: Checking sheet metal parameters...",
-                "[07] AUDIT_ALERT: Sheet metal thickness parameter missing in drawing annotation."
+                "[06] PARAM_CHECK: Auditing sheet metal parameters...",
+                "[07] AUDIT_ALERT: Sheet metal thickness parameter missing in drawing annotations."
             ],
             "title_block": {
-                "part_name": "Sheet Metal Support Bracket",
+                "part_name": part_title,
                 "drawing_number": "DWG-2026-FMS-04",
                 "revision": "Rev C",
                 "material_spec": "Aluminum 6061-T6",

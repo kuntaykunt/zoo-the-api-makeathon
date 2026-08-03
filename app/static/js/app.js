@@ -1,4 +1,4 @@
-// STAR WARS COMMAND TERMINAL // Agent Harness & Loop Engineering Controller
+// STAR WARS COMMAND TERMINAL // Agent Harness & Resizable Terminal Controller
 
 let currentEvalState = null;
 let currentKCLCode = "";
@@ -8,6 +8,7 @@ let isZooModelVerified = false;
 document.addEventListener("DOMContentLoaded", () => {
   initUploadBox();
   initActionButtons();
+  initResizableTerminal();
   
   // Ensure Explode button is strictly hidden initially
   const explodeBtn = document.getElementById("explodeBtn");
@@ -15,8 +16,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
   streamLog("AGENT_HARNESS", "Initialized Agentic Loop Engine v2.4.");
   streamLog("AGENT_HARNESS", "GATING STATUS: 'EXPLODE TO MANUFACTURE' capability LOCKED.");
-  streamLog("AGENT_HARNESS", "Prerequisites: 1. Complete Drawing Audit -> 2. Verified KCL -> 3. Zoo API Model Verification (HTTP 200 OK).");
+  streamLog("AGENT_HARNESS", "Prerequisites: 1. Drawing Inspection -> 2. Title Block Audit -> 3. Zoo API Verification.");
 });
+
+function initResizableTerminal() {
+  const handle = document.getElementById("terminalResizeHandle");
+  const terminal = document.getElementById("footerTerminal");
+  if (!handle || !terminal) return;
+
+  let isDragging = false;
+  let startY = 0;
+  let startHeight = 160;
+
+  handle.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    startY = e.clientY;
+    startHeight = terminal.offsetHeight;
+    document.body.style.userSelect = "none";
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    const dy = startY - e.clientY;
+    const newHeight = Math.max(90, Math.min(window.innerHeight * 0.8, startHeight + dy));
+    terminal.style.height = `${newHeight}px`;
+    document.body.style.paddingBottom = `${newHeight + 10}px`;
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (isDragging) {
+      isDragging = false;
+      document.body.style.userSelect = "";
+    }
+  });
+}
 
 function initUploadBox() {
   const dropzone = document.getElementById("dropzone");
@@ -54,15 +87,19 @@ async function handleFileUpload(file) {
   // Hide dropzone
   const dropzone = document.getElementById("dropzone");
   const fileCard = document.getElementById("uploadedFileCard");
+  const resetBtn = document.getElementById("resetFileBtn");
   
   if (dropzone) dropzone.style.display = "none";
   if (fileCard) {
     fileCard.style.display = "flex";
     document.getElementById("fileNameText").textContent = `📄 ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
   }
+  
+  // Hide Change File button once processing begins as requested
+  if (resetBtn) resetBtn.style.display = "none";
 
-  streamLog("HARNESS_LOOP", "[STEP 1/4] Initializing Drawing Ingestion & Qwen-VL Vision Inspection...");
-  streamLog("QWEN_VL_AGENT", "POST /api/upload-drawing -> Scanning orthographic projections & title block (antet)...");
+  streamLog("HARNESS_LOOP", "[STEP 1/4] Normalizing image buffer & executing Qwen-VL Vision Inspection...");
+  streamLog("QWEN_VL_AGENT", `POST /api/upload-drawing -> Transmitting '${file.name}' to Qwen-VL Vision API...`);
 
   const formData = new FormData();
   formData.append("file", file);
@@ -79,9 +116,12 @@ async function handleFileUpload(file) {
     currentEvalState = data;
     currentPartName = data.title_block?.part_name || data.part_name || "Sheet Metal Support Bracket";
 
+    if (data.raw_qwen_response) {
+      streamLog("QWEN_VL_RESPONSE", data.raw_qwen_response);
+    }
+
     streamLog("QWEN_VL_AGENT", `HTTP 200 OK -> Scanned Title Block: '${currentPartName}' (${data.title_block?.drawing_number || 'DWG-2026'}).`);
 
-    // Stream trace logs
     if (data.agentic_trace) {
       data.agentic_trace.forEach(logMsg => streamLog("AGENT_TRACE", logMsg));
     }
@@ -102,15 +142,30 @@ function resetFileUpload() {
   const gatekeeperCard = document.getElementById("gatekeeperCard");
   const antetCard = document.getElementById("antetCard");
   const explodeBtn = document.getElementById("explodeBtn");
+  const positionsContainer = document.getElementById("positionsContainer");
+  const kclEditor = document.getElementById("kclEditor");
 
   if (dropzone) dropzone.style.display = "block";
   if (fileCard) fileCard.style.display = "none";
   if (gatekeeperCard) gatekeeperCard.style.display = "none";
   if (antetCard) antetCard.style.display = "none";
   if (explodeBtn) explodeBtn.style.display = "none";
+  if (kclEditor) kclEditor.textContent = "// Upload technical drawing to synthesize KittyCAD Language (KCL) code...";
+  if (positionsContainer) containerReset(positionsContainer);
 
   isZooModelVerified = false;
-  streamLog("AGENT_HARNESS", "Reset ingestion state buffer. Gated capabilities relocked.");
+  currentEvalState = null;
+  currentKCLCode = "";
+
+  streamLog("AGENT_HARNESS", "START FRESH: Reset ingestion state buffer. Ready for new technical drawing.");
+}
+
+function containerReset(container) {
+  container.innerHTML = `
+    <div style="color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 2rem; border: 1px dashed var(--term-border);">
+      Ingest a drawing and click <strong>'EXPLODE TO MANUFACTURE'</strong> to decompose assembly into itemized positions (Pozlar) and step-by-step manufacturing routing.
+    </div>
+  `;
 }
 
 function renderTitleBlock(tb) {
@@ -156,7 +211,7 @@ function renderEvaluationGatekeeper(data) {
     streamLog("HARNESS_LOOP", "[STEP 2/4] Audit Alert: Parameters missing. Requesting user input verification...");
 
     let html = `<div style="font-size: 0.8rem; color: var(--term-amber); margin-bottom: 0.65rem;">
-      [!] Qwen Vision AI detected missing title block parameters. Please confirm:
+      [!] Qwen Vision AI detected missing parameters. Please confirm below:
     </div>`;
 
     if (data.questions && data.questions.length > 0) {
@@ -192,7 +247,7 @@ async function submitAnswers() {
     });
   }
 
-  streamLog("KCL_SYNTHESIZER", "Synthesizing KittyCAD KCL code from verified title block parameters...");
+  streamLog("KCL_SYNTHESIZER", "Synthesizing KittyCAD KCL code from verified parameters...");
   streamLog("HARNESS_LOOP", "[STEP 3/4] Transmitting KCL payload to Zoo Engine API (api.zoo.dev)...");
   streamLog("ZOO_ENGINE_API", "POST /api/answer-questions -> Compiling KCL & verifying geometry readiness...");
 
@@ -212,26 +267,22 @@ async function submitAnswers() {
     renderKCLCode(data.kcl_code);
     renderDFMAAgent(data.dfma_analysis);
 
-    // Verify Zoo Engine Model Readiness
     if (data.model_ready && data.zoo_verification?.model_ready) {
       isZooModelVerified = true;
       streamLog("ZOO_ENGINE_API", `HTTP 200 OK -> Geometry Verification SUCCESS: ${data.zoo_verification.compile_status}`);
       streamLog("HARNESS_LOOP", "[STEP 4/4] Zoo Engine model verification CONFIRMED! Unlocking 'EXPLODE TO MANUFACTURE' capability.");
 
-      // Unlock Explode Button
       const explodeBtn = document.getElementById("explodeBtn");
       if (explodeBtn) {
         explodeBtn.style.display = "inline-flex";
         explodeBtn.style.boxShadow = "0 0 15px var(--term-amber)";
       }
 
-      // Automatically populate positions (pozlar)
       handleExplodeAssembly();
 
     } else {
       isZooModelVerified = false;
       streamLog("ZOO_ENGINE_API", "HTTP 400 ERROR -> Zoo Engine compile unverified. Re-triggering Qwen API parameter loop...");
-      streamLog("AGENT_LOOP", "Re-evaluating parameters via Qwen Vision API...");
     }
 
   } catch (err) {
@@ -368,6 +419,11 @@ function openInZooStudio(kclEncoded) {
 }
 
 function initActionButtons() {
+  const startFreshBtn = document.getElementById("startFreshBtn");
+  if (startFreshBtn) {
+    startFreshBtn.addEventListener("click", resetFileUpload);
+  }
+
   const resetBtn = document.getElementById("resetFileBtn");
   if (resetBtn) {
     resetBtn.addEventListener("click", resetFileUpload);
