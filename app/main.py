@@ -62,7 +62,7 @@ class DFMARequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def serve_dashboard(request: Request):
     """Renders the main Studio UI."""
-    return templates.TemplateResponse("index.html", {"request": request, "zoo_status": zoo_service.check_health()})
+    return templates.TemplateResponse(request=request, name="index.html", context={"zoo_status": zoo_service.check_health()})
 
 
 @app.post("/api/upload-drawing")
