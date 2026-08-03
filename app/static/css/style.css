@@ -165,7 +165,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  overflow: hidden;
+  min-height: 160px;
 }
 
 .upload-box input[type="file"] {
@@ -176,11 +176,7 @@ body {
   height: 100%;
   opacity: 0;
   cursor: pointer;
-  z-index: 10;
-}
-
-.upload-box > *:not(input) {
-  pointer-events: none;
+  z-index: 100;
 }
 
 .upload-box:hover {
