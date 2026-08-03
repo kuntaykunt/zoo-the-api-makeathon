@@ -47,6 +47,7 @@ class EngineeringStartRequest(BaseModel):
     initial_eval: dict
     user_answers: dict
     upload_name: str = ""
+    file_url: str = ""
 
 class EngineeringIterateRequest(BaseModel):
     session_id: str
@@ -164,6 +165,44 @@ async def explode_assembly(payload: ExplodeAssemblyRequest):
 
 
 @app.post("/api/engineering-loop/start")
+def _resolve_upload_path(name: str, file_url: str) -> str:
+    """Resolve the on-disk path of an uploaded or sample drawing.
+
+    Tries, in order:
+      1. file_url mapping (/static/uploads/X -> app/static/uploads/X,
+         /library/samples/X -> library/samples/X)
+      2. original name inside app/static/uploads/
+      3. original name inside library/samples/   (for repo sample drawings)
+    """
+    candidates = []
+    if file_url:
+        cleaned = file_url.split("?")[0].lstrip("/")
+        if cleaned.startswith("static/"):
+            candidates.append(cleaned)
+        elif cleaned.startswith("library/samples/"):
+            candidates.append(cleaned)
+        elif cleaned.startswith("uploads/"):
+            candidates.append(os.path.join("app", cleaned))
+        else:
+            candidates.append(os.path.join("app/static", cleaned))
+    if name:
+        bn = os.path.basename(name)
+        candidates.append(os.path.join("app/static/uploads", bn))
+        candidates.append(os.path.join("library/samples", bn))
+        candidates.append(os.path.join("app/static/uploads", name))
+        candidates.append(os.path.join("library/samples", name))
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    # Fallback: most recent file in uploads (best effort)
+    updir = "app/static/uploads"
+    if os.path.isdir(updir):
+        files = [f for f in os.listdir(updir) if not f.startswith(".")]
+        if files:
+            return os.path.join(updir, sorted(files)[-1])
+    raise FileNotFoundError("; ".join(candidates))
+
+
 async def engineering_start(payload: EngineeringStartRequest):
     """
     Agentic Loop Step 1: open an engineering session. Zookeeper (Agent API) acts
@@ -171,9 +210,10 @@ async def engineering_start(payload: EngineeringStartRequest):
     enforces the drawing envelope.
     """
     name = payload.upload_name or payload.initial_eval.get("file_name", "drawing.pdf")
-    path = f"app/static/uploads/{os.path.basename(name)}"
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"upload file not found: {name}")
+    try:
+        path = _resolve_upload_path(name, payload.file_url)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"upload file not found: {name} (searched: {e})")
     session_id = engineering_loop.create_session(payload.initial_eval, payload.user_answers, path)
     return JSONResponse({"session_id": session_id, "state": engineering_loop.get_state(session_id)})
 

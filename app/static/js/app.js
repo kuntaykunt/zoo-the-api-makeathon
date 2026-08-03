@@ -654,7 +654,8 @@ async function startEngineeringLoop() {
       body: JSON.stringify({
         initial_eval: currentEvalState || {},
         user_answers: currentUserAnswers || {},
-        upload_name: currentUploadName
+        upload_name: currentUploadName,
+        file_url: currentEvalState?.file_url || ""
       })
     });
     const data = await res.json();
@@ -1245,8 +1246,9 @@ function streamLog(caller, message) {
     <span class="log-caller">[${caller}]</span>
     <span>${message}</span>
   `;
-  consoleBox.appendChild(line);
-  consoleBox.scrollTop = consoleBox.scrollHeight;
+  // Newest on top
+  consoleBox.insertBefore(line, consoleBox.firstChild);
+  consoleBox.scrollTop = 0;
 }
 
 // KCL Syntax Highlighter (G5 — transparency)
