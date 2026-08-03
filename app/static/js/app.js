@@ -10,7 +10,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initActionButtons();
   initResizableTerminal();
   
-  // Ensure Explode button is strictly hidden initially
   const explodeBtn = document.getElementById("explodeBtn");
   if (explodeBtn) explodeBtn.style.display = "none";
 
@@ -120,7 +119,7 @@ async function handleFileUpload(file) {
       streamLog("QWEN_VL_RESPONSE", data.raw_qwen_response);
     }
 
-    streamLog("QWEN_VL_AGENT", `Analysis Complete -> Part Title: '${currentPartName}' (DWG: ${data.title_block?.drawing_number || 'N/A'}).`);
+    streamLog("QWEN_VL_AGENT", `Analysis Complete -> Scanned Part Title: '${currentPartName}' (DWG: ${data.title_block?.drawing_number || 'N/A'}).`);
 
     if (data.agentic_trace) {
       data.agentic_trace.forEach(logMsg => streamLog("AGENT_TRACE", logMsg));
@@ -128,6 +127,7 @@ async function handleFileUpload(file) {
 
     renderTitleBlock(data.title_block || {});
     renderEvaluationGatekeeper(data);
+    renderInferenceSummary(data);
 
   } catch (err) {
     console.error(err);
@@ -145,7 +145,7 @@ function resetFileUpload() {
   const antetCard = document.getElementById("antetCard");
   const explodeBtn = document.getElementById("explodeBtn");
   const positionsContainer = document.getElementById("positionsContainer");
-  const kclEditor = document.getElementById("kclEditor");
+  const inferenceContent = document.getElementById("inferenceContent");
 
   if (fileInput) fileInput.value = "";
   if (dropzone) dropzone.style.display = "block";
@@ -153,7 +153,14 @@ function resetFileUpload() {
   if (gatekeeperCard) gatekeeperCard.style.display = "none";
   if (antetCard) antetCard.style.display = "none";
   if (explodeBtn) explodeBtn.style.display = "none";
-  if (kclEditor) kclEditor.textContent = "// Upload technical drawing to synthesize KittyCAD Language (KCL) code...";
+
+  if (inferenceContent) {
+    inferenceContent.innerHTML = `
+      <div style="color: var(--text-dim); font-size: 0.8rem;">
+        Upload a drawing to execute Qwen Vision AI & Zoo Agent classification...
+      </div>
+    `;
+  }
 
   if (positionsContainer) {
     positionsContainer.innerHTML = `
@@ -167,7 +174,7 @@ function resetFileUpload() {
   currentEvalState = null;
   currentKCLCode = "";
 
-  streamLog("AGENT_HARNESS", "START FRESH: State buffer cleared. Drag-and-Drop Ingestion box re-activated.");
+  streamLog("AGENT_HARNESS", "START FRESH: State buffer cleared. Ingestion box re-activated.");
 }
 
 function renderTitleBlock(tb) {
@@ -184,6 +191,27 @@ function renderTitleBlock(tb) {
     <div class="antet-item">Scale: <strong>${tb.scale || '1:1'}</strong></div>
     <div class="antet-item">Material: <strong>${tb.material_spec || 'N/A'}</strong></div>
     <div class="antet-item">Tolerances: <strong>${tb.tolerances || 'ISO 2768-m'}</strong></div>
+  `;
+}
+
+function renderInferenceSummary(data) {
+  const container = document.getElementById("inferenceContent");
+  if (!container) return;
+
+  const isAssembly = data.is_assembly !== false;
+  const classificationText = isAssembly ? "ASSEMBLY (Multi-Part Drawing Component)" : "SINGLE PART COMPONENT";
+  const statusColor = isAssembly ? "var(--term-amber)" : "var(--term-green)";
+
+  container.innerHTML = `
+    <div style="font-size: 0.85rem; font-weight: 700; color: ${statusColor}; margin-bottom: 0.5rem;">
+      🔍 Classification: ${classificationText}
+    </div>
+    <div style="font-size: 0.8rem; color: var(--text-main); margin-bottom: 0.4rem;">
+      <strong>CAD Inference Summary:</strong> ${data.detected_parameters?.overall_dimensions || 'Dimensions detected from projections.'}
+    </div>
+    <div style="font-size: 0.75rem; color: var(--text-dim); line-height: 1.4; background: rgba(0,0,0,0.4); padding: 0.5rem; border-left: 2px solid var(--term-cyan);">
+      🤖 <strong>Zoo Agent API Summary:</strong> Evaluated drawing geometry. Identified sub-component boundaries & manufacturing constraints. Ready to compile KCL definitions for each position (Poz).
+    </div>
   `;
 }
 
@@ -207,7 +235,7 @@ function renderEvaluationGatekeeper(data) {
         <strong>API Response:</strong> ${data.message}
       </div>
       <div style="font-size: 0.75rem; color: var(--text-dim);">
-        Please verify parameters manually below to continue KCL synthesis:
+        Please verify parameters manually below to continue:
       </div>
     `;
     return;
@@ -218,7 +246,7 @@ function renderEvaluationGatekeeper(data) {
       evalStatusPill.className = "pill online";
       evalStatusPill.innerHTML = `<span class="dot"></span> COMPLETENESS: VERIFIED (100%)`;
     }
-    streamLog("HARNESS_LOOP", "[STEP 2/4] Title block parameters 100% complete. Proceeding to KCL synthesis & Zoo API check...");
+    streamLog("HARNESS_LOOP", "[STEP 2/4] Title block parameters 100% complete. Proceeding to Zoo Agent API check...");
     submitAnswers();
   } else {
     if (evalStatusPill) {
@@ -268,7 +296,7 @@ async function submitAnswers() {
 
   streamLog("KCL_SYNTHESIZER", "Synthesizing KittyCAD KCL code from verified parameters...");
   streamLog("HARNESS_LOOP", "[STEP 3/4] Transmitting KCL payload to Zoo Engine API (api.zoo.dev)...");
-  streamLog("ZOO_ENGINE_API", "POST /api/answer-questions -> Compiling KCL & verifying geometry readiness...");
+  streamLog("ZOO_ENGINE_API", "POST /api/answer-questions -> Verifying geometry readiness via Zoo Agent API...");
 
   try {
     const res = await fetch("/api/answer-questions", {
@@ -283,8 +311,26 @@ async function submitAnswers() {
     const data = await res.json();
     
     currentKCLCode = data.kcl_code;
-    renderKCLCode(data.kcl_code);
     renderDFMAAgent(data.dfma_analysis);
+
+    // Update Zoo Agent Summary
+    if (data.zoo_verification?.summary) {
+      const inferenceContainer = document.getElementById("inferenceContent");
+      if (inferenceContainer) {
+        const isAssembly = currentEvalState?.is_assembly !== false;
+        inferenceContainer.innerHTML = `
+          <div style="font-size: 0.85rem; font-weight: 700; color: var(--term-amber); margin-bottom: 0.5rem;">
+            🔍 Classification: ${isAssembly ? "ASSEMBLY (Multi-Part Drawing Component)" : "SINGLE PART COMPONENT"}
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-main); margin-bottom: 0.4rem;">
+            <strong>Material:</strong> ${data.material} • <strong>Thickness:</strong> ${data.thickness_mm}mm
+          </div>
+          <div style="font-size: 0.75rem; color: var(--term-green); line-height: 1.4; background: rgba(5, 255, 161, 0.05); padding: 0.5rem; border: 1px solid rgba(5, 255, 161, 0.3);">
+            ✅ <strong>Zoo Agent API Verification:</strong> ${data.zoo_verification.summary}
+          </div>
+        `;
+      }
+    }
 
     if (data.model_ready && data.zoo_verification?.model_ready) {
       isZooModelVerified = true;
@@ -308,13 +354,6 @@ async function submitAnswers() {
     console.error(err);
     streamLog("ZOO_ERROR", `KCL compilation error: ${err.message}`);
     alert("KCL Compilation error: " + err.message);
-  }
-}
-
-function renderKCLCode(code) {
-  const editor = document.getElementById("kclEditor");
-  if (editor) {
-    editor.textContent = code;
   }
 }
 

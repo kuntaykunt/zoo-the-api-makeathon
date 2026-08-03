@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>COMMAND TERMINAL // ZOO CAD & KNOWLEDGE PIPELINE</title>
-  <meta name="description" content="Technical Drawing Ingestion to KCL CAD Intelligence, Pozlar Decomposition, and DFMA Manufacturing Knowledge.">
+  <meta name="description" content="Technical Drawing Ingestion to CAD Intelligence, Pozlar Decomposition, and DFMA Manufacturing Knowledge.">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -32,10 +32,10 @@
   <!-- Main 2-Column High-Readability Studio Grid -->
   <main class="studio-grid">
 
-    <!-- COLUMN 1: Ingestion, Title Block (Antet) & KCL Synthesis -->
+    <!-- COLUMN 1: Ingestion, Title Block (Antet) & Classification -->
     <section class="panel">
       <div class="panel-header">
-        <div class="panel-title">[ 01 // DRAWING INGESTION & KCL SYNTHESIS ]</div>
+        <div class="panel-title">[ 01 // DRAWING INGESTION & CLASSIFICATION ]</div>
       </div>
       <div class="panel-body">
         
@@ -47,7 +47,7 @@
           <input type="file" id="fileInput" accept="image/*,application/pdf" style="display: none;">
         </div>
 
-        <!-- Uploaded File Card (Shows after upload; CHANGE FILE hidden once processing starts) -->
+        <!-- Uploaded File Card (Shows after upload) -->
         <div class="uploaded-file-card" id="uploadedFileCard" style="display: none;">
           <span id="fileNameText">📄 File Uploaded</span>
           <button class="btn btn-secondary" id="resetFileBtn" style="padding: 0.3rem 0.6rem; font-size: 0.7rem; display: none;">
@@ -61,26 +61,27 @@
           <div class="antet-grid" id="antetGrid"></div>
         </div>
 
-        <!-- Parameter Gatekeeper Audit Card with START FRESH button -->
+        <!-- Parameter Gatekeeper Audit Card with Wide START FRESH button at the bottom -->
         <div class="antet-card" id="gatekeeperCard" style="display: none; border-color: var(--term-amber);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.65rem;">
-            <button class="btn btn-amber" id="startFreshBtn" style="padding: 0.35rem 0.75rem; font-size: 0.7rem;">
-              🔄 START FRESH
-            </button>
-            <div class="antet-title" style="color: var(--term-amber); margin: 0;">⚠️ PARAMETER AUDIT & VERIFICATION</div>
-          </div>
+          <div class="antet-title" style="color: var(--term-amber); margin-bottom: 0.5rem;">⚠️ PARAMETER AUDIT & VERIFICATION</div>
           <div id="questionsContainer"></div>
-          <button class="btn" id="submitAnswersBtn" style="width: 100%; margin-top: 0.5rem;">
-            <span>⚡ CONFIRM PARAMETERS & SYNTHESIZE KCL</span>
+          <button class="btn" id="submitAnswersBtn" style="width: 100%; margin-top: 0.75rem;">
+            <span>⚡ CONFIRM PARAMETERS & RUN ZOO AGENT API</span>
+          </button>
+          <!-- Wide START FRESH button placed directly below CONFIRM button -->
+          <button class="btn btn-amber" id="startFreshBtn" style="width: 100%; margin-top: 0.5rem; padding: 0.6rem;">
+            <span>🔄 START FRESH (RESET PIPELINE)</span>
           </button>
         </div>
 
-        <!-- Synthesized KCL Code Display -->
-        <div>
-          <div style="font-size: 0.8rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.4rem; letter-spacing: 1px;">
-            💻 KITTYCAD KCL DEFINITION
+        <!-- Assembly vs Part Inference & Zoo Agent Summary Card (Replaces raw KCL box) -->
+        <div class="antet-card" id="inferenceCard" style="border-color: var(--term-cyan);">
+          <div class="antet-title" style="color: var(--term-cyan);">🧩 ASSEMBLY / PART CLASSIFICATION & ZOO AGENT SUMMARY</div>
+          <div id="inferenceContent">
+            <div style="color: var(--text-dim); font-size: 0.8rem;">
+              Upload a drawing to execute Qwen Vision AI & Zoo Agent classification...
+            </div>
           </div>
-          <div class="code-editor" id="kclEditor">// Upload technical drawing to synthesize KittyCAD Language (KCL) code...</div>
         </div>
 
       </div>
