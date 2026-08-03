@@ -445,9 +445,14 @@ function renderPositionsList(positions) {
             <div class="position-title">${pos.full_name}</div>
             <div class="position-meta">${pos.type} • Dimensions: ${pos.dimensions} • Mass: ${pos.mass_g}g</div>
           </div>
-          <button class="btn btn-secondary" onclick="launchZooStudio(${idx}, '${pos.pos_id}')" style="padding: 0.45rem 0.85rem; font-size: 0.75rem; border-color: var(--term-cyan); color: var(--term-cyan);">
-            🚀 OPEN IN ZOO.STUDIO
-          </button>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-secondary" onclick="launchZooStudioWeb(${idx}, '${pos.pos_id}')" style="padding: 0.4rem 0.7rem; font-size: 0.75rem; border-color: var(--term-cyan); color: var(--term-cyan);">
+              🌐 OPEN ZOO WEB
+            </button>
+            <button class="btn btn-secondary" onclick="launchZooStudioApp(${idx}, '${pos.pos_id}')" style="padding: 0.4rem 0.7rem; font-size: 0.75rem; border-color: var(--term-amber); color: var(--term-amber);">
+              💻 OPEN DESKTOP APP
+            </button>
+          </div>
         </div>
 
         <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-cyan); margin-top: 0.35rem;">
@@ -468,43 +473,38 @@ function renderPositionsList(positions) {
   container.innerHTML = html;
 }
 
-function launchZooStudio(idx, posId) {
+function launchZooStudioWeb(idx, posId) {
   const kclCode = window[`_kcl_pos_${idx}`] || currentKCLCode || "";
   
-  // 1. Copy KCL snippet to clipboard for pasting into Zoo Studio
+  // Direct sync window open to avoid popup blockers
+  const win = window.open("https://design.zoo.dev", "_blank");
+
   if (navigator.clipboard && kclCode) {
     navigator.clipboard.writeText(kclCode).then(() => {
-      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard!`);
+      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Opening Zoo Web Studio (https://design.zoo.dev)...`);
+      alert(`✅ KCL code for '${posId}' copied to clipboard!\n\nOpening Zoo Web Studio (design.zoo.dev). Press Cmd+V / Ctrl+V to paste into editor.`);
     }).catch(err => {
-      console.warn("[Zoo Studio Clipboard] Copy notice:", err);
+      streamLog("ZOO_STUDIO", `Opening Zoo Web Studio (https://design.zoo.dev)...`);
+    });
+  }
+}
+
+function launchZooStudioApp(idx, posId) {
+  const kclCode = window[`_kcl_pos_${idx}`] || currentKCLCode || "";
+  
+  if (navigator.clipboard && kclCode) {
+    navigator.clipboard.writeText(kclCode).then(() => {
+      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Launching Zoo Desktop App...`);
+      alert(`✅ KCL code for '${posId}' copied to clipboard!\n\nLaunching Zoo Design Studio desktop app.`);
     });
   }
 
-  streamLog("ZOO_STUDIO", `Launching Zoo Design Studio for '${posId}'...`);
+  streamLog("ZOO_STUDIO", `Launching Desktop App (zoo-studio://) for '${posId}'...`);
+  window.location.href = "zoo-studio://";
+}
 
-  let appOpened = false;
-  const onBlur = () => {
-    appOpened = true;
-    window.removeEventListener("blur", onBlur);
-    streamLog("ZOO_STUDIO", "Desktop App ('Zoo Design Studio.app') activated!");
-  };
-  window.addEventListener("blur", onBlur);
-
-  // Trigger protocol handler for installed Zoo Design Studio desktop app
-  const iframe = document.createElement("iframe");
-  iframe.style.display = "none";
-  iframe.src = "zoo-studio://";
-  document.body.appendChild(iframe);
-
-  // Fallback to official web app (https://design.zoo.dev) if desktop app is not opened
-  setTimeout(() => {
-    if (document.body.contains(iframe)) document.body.removeChild(iframe);
-    window.removeEventListener("blur", onBlur);
-    if (!appOpened) {
-      streamLog("ZOO_STUDIO", "Opening Zoo Design Web Studio (https://design.zoo.dev)...");
-      window.open("https://design.zoo.dev", "_blank");
-    }
-  }, 800);
+function launchZooStudio(idx, posId) {
+  launchZooStudioWeb(idx, posId);
 }
 
 function initActionButtons() {

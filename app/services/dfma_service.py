@@ -1,23 +1,27 @@
 class DFMAService:
-    # Densities in g/cm3
-    MATERIAL_DENSITIES = {
-        "Aluminum 6061-T6": 2.70,
-        "Stainless Steel 304": 8.00,
-        "Mild Steel S235": 7.85,
-        "Titanium Gr5": 4.43
-    }
+    def get_density(self, material: str) -> float:
+        m = material.lower().strip()
+        if any(k in m for k in ["st37", "st52", "s235", "s355", "steel", "çelik", "fe"]):
+            return 7.85
+        elif any(k in m for k in ["stainless", "paslanmaz", "304", "316", "inox"]):
+            return 8.00
+        elif any(k in m for k in ["al", "alum", "alüminyum", "6061", "7075", "5083"]):
+            return 2.70
+        elif "titan" in m:
+            return 4.43
+        return 7.85 if "st" in m else 2.70
 
     def analyze_manufacturing(self, kcl_code: str, part_info: dict) -> dict:
         """
         Calculates detailed Volume, Mass, Material Density, Manufacturing Cycle Times (Hours/Min),
         and DFMA Constraint Rules for the DFMA Agent.
         """
-        material = part_info.get("material", "Aluminum 6061-T6")
+        material = part_info.get("material") or "St37-2"
         thickness = float(part_info.get("thickness_mm", 2.0))
-        part_name = part_info.get("part_name", "Sheet Metal Bracket")
+        part_name = part_info.get("part_name", "Sheet Metal Component")
 
         # Material Density lookup
-        density_g_cm3 = self.MATERIAL_DENSITIES.get(material, 2.70)
+        density_g_cm3 = self.get_density(material)
 
         # Geometric Calculations (Simulated bounding 140x90mm with 2x 50mm flanges)
         plate_area_cm2 = (14.0 * 9.0) + (2 * 9.0 * 5.0) # ~216 cm2
