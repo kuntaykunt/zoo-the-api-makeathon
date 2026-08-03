@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+*.env
+
+# Uploads & Temp Cache
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+app/static/renders/*
+!app/static/renders/.gitkeep
+
+# macOS
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
