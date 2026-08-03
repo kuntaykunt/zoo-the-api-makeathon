@@ -295,6 +295,60 @@ body {
   box-shadow: 0 0 15px rgba(255, 208, 0, 0.8);
 }
 
+.btn:disabled, .btn.disabled, a.btn.disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  filter: grayscale(100%) !important;
+  box-shadow: none !important;
+  border-color: #555 !important;
+  color: #888 !important;
+}
+
+/* Position KCL Accordion Box */
+.poz-kcl-box {
+  margin-top: 0.5rem;
+  border: 1px solid var(--term-border);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.poz-kcl-toggle {
+  width: 100%;
+  background: rgba(0, 243, 255, 0.05);
+  border: none;
+  color: var(--term-cyan);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.15s ease;
+}
+
+.poz-kcl-toggle:hover {
+  background: rgba(0, 243, 255, 0.15);
+}
+
+.poz-kcl-toggle.active {
+  border-bottom: 1px solid var(--term-border);
+  background: rgba(0, 243, 255, 0.1);
+}
+
+.poz-kcl-content {
+  display: none;
+  padding: 0.75rem;
+  background: #000000;
+}
+
+.poz-kcl-content.open {
+  display: block;
+}
+
 /* KCL Code Editor Display */
 .code-editor {
   background: #000;
