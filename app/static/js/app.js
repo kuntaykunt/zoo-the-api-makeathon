@@ -12,17 +12,25 @@ let apiCallCount = 0;
 
 // Terminal activity bar control
 let terminalActivityTimeout = null;
+let systemActiveTimeout = null;
 
 function showTerminalActivity(durationMs = 3000) {
   const bar = document.getElementById("terminalActiveBar");
-  if (!bar) return;
-  bar.style.display = "block";
-  bar.style.width = "100%";
+  const beam = document.getElementById("terminalLightBeam");
+  const gear = document.getElementById("systemGear");
+  if (bar) { bar.style.display = "block"; bar.style.width = "100%"; }
+  if (beam) beam.classList.add("active");
+  if (gear) gear.classList.add("active");
+
   clearTimeout(terminalActivityTimeout);
+  clearTimeout(systemActiveTimeout);
   terminalActivityTimeout = setTimeout(() => {
-    bar.style.display = "none";
-    bar.style.width = "0%";
+    if (bar) { bar.style.display = "none"; bar.style.width = "0%"; }
+    if (beam) beam.classList.remove("active");
   }, durationMs);
+  systemActiveTimeout = setTimeout(() => {
+    if (gear) gear.classList.remove("active");
+  }, durationMs + 2000);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -187,6 +195,14 @@ function resetFileUpload() {
   currentUploadName = "";
   currentUserAnswers = {};
 
+  // Disable Manufacturing Review button on reset
+  const explodeBtn = document.getElementById("explodeBtn");
+  if (explodeBtn) {
+    explodeBtn.style.display = "none";
+    explodeBtn.disabled = true;
+    explodeBtn.classList.add("disabled");
+  }
+
   if (inferenceContent) {
     inferenceContent.innerHTML = `
       <div style="color: var(--text-dim); font-size: 0.8rem;">
@@ -280,6 +296,13 @@ function renderEvaluationGatekeeper(data) {
       evalStatusPill.innerHTML = `<span class="dot"></span> COMPLETENESS: VERIFIED (100%)`;
     }
     streamLog("HARNESS_LOOP", "[STEP 2/4] Title block parameters 100% complete. Proceeding to Zoo Agent API check...");
+
+    // Grey out the confirm button since it auto-passed
+    if (submitAnswersBtn) {
+      submitAnswersBtn.disabled = true;
+      submitAnswersBtn.classList.add("disabled");
+      submitAnswersBtn.querySelector("span").textContent = "✅ PARAMETERS VERIFIED — PROCESSING...";
+    }
     submitAnswers();
   } else {
     if (evalStatusPill) {
@@ -374,10 +397,18 @@ async function submitAnswers() {
               ✅ ZOO ENGINE GEOMETRY VERIFIED
             </div>
             <div style="color: var(--text-main); font-size: 0.8rem; margin-bottom: 0.75rem;">
-              Click the <strong>'💥 EXPLODE TO MANUFACTURE'</strong> button at the top-right to decompose assembly into itemized positions (Pozlar) and generate KittyCAD KCL launch buttons.
+              Run the <strong>Engineering Loop</strong> for authentic KCL, or click <strong>'⚙️ MANUFACTURING REVIEW'</strong> for quick decomposition.
             </div>
           </div>
         `;
+      }
+
+      // Enable Manufacturing Review button
+      const explodeBtn = document.getElementById("explodeBtn");
+      if (explodeBtn) {
+        explodeBtn.style.display = "inline-flex";
+        explodeBtn.disabled = false;
+        explodeBtn.classList.remove("disabled");
       }
 
     } else {
@@ -435,14 +466,19 @@ function renderDFMAAgent(dfma) {
   const scoreBox = document.getElementById("dfmaScore");
   const metricsBox = document.getElementById("dfmaMetrics");
 
-  if (scoreBox) {
-    scoreBox.innerHTML = `
-      <div>
-        <div style="font-size: 0.75rem; color: var(--text-dim);">MANUFACTURABILITY INDEX</div>
-        <div style="font-size: 0.85rem; font-weight: 700; color: var(--term-green);">${dfma.manufacturability_status}</div>
-      </div>
-      <div class="score-num">${dfma.dfma_score}%</div>
-    `;
+  // Update gauge
+  const score = dfma.dfma_score || 0;
+  const maxDash = 160;
+  const fillDash = (score / 100) * maxDash;
+  const gaugeFill = document.getElementById("gaugeFill");
+  const gaugeText = document.getElementById("gaugeText");
+  if (gaugeFill) {
+    gaugeFill.setAttribute("stroke-dasharray", `${fillDash} ${maxDash}`);
+    gaugeFill.setAttribute("stroke", score >= 80 ? "var(--term-green)" : score >= 60 ? "var(--term-amber)" : "var(--term-red)");
+  }
+  if (gaugeText) {
+    gaugeText.textContent = `${score}%`;
+    gaugeText.setAttribute("fill", score >= 80 ? "var(--term-green)" : score >= 60 ? "var(--term-amber)" : "var(--term-red)");
   }
 
   if (metricsBox) {
@@ -640,10 +676,19 @@ async function runEngineeringIterations() {
     }
     if (state.final || state.status === "error") {
       if (state.final) {
-        streamLog("AGENT_LOOP", "✅ CONVERGED — Drawing envelope reproduced. Rendering 2D technical drawing.");
+        streamLog("AGENT_LOOP", "✅ CONVERGED — Drawing envelope reproduced. Enabling MANUFACTURING REVIEW.");
         streamLog("ZOO_KCL_AGENT", "🔧 Tool: edit_kcl_code → writing authentic KittyCAD KCL...");
         streamLog("DRAWING_SVC", "🔧 Tool: render_sheet → generating orthographic views + BOM...");
         renderEngineeringFinal(state);
+
+        // Enable the Manufacturing Review button
+        const explodeBtn = document.getElementById("explodeBtn");
+        if (explodeBtn) {
+          explodeBtn.style.display = "inline-flex";
+          explodeBtn.disabled = false;
+          explodeBtn.classList.remove("disabled", "loading");
+        }
+        isZooModelVerified = true;
       }
       loopSessionId = null;
       break;

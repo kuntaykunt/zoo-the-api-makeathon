@@ -29,17 +29,16 @@
     </div>
   </header>
 
-  <!-- Main 2-Column High-Readability Studio Grid -->
+  <!-- Main 3-Panel Studio Layout: 01 Ingestion → 02 Eng Loop → 03 POZLAR/DFMA -->
   <main class="studio-grid">
 
-    <!-- COLUMN 1: Ingestion, Title Block (Antet) & Classification -->
+    <!-- PANEL 01: Ingestion, Title Block & Classification -->
     <section class="panel">
       <div class="panel-header">
         <div class="panel-title">[ 01 // DRAWING INGESTION & CLASSIFICATION ]</div>
       </div>
       <div class="panel-body">
-        
-        <!-- Drag & Drop Box (Hides on upload) -->
+
         <div class="upload-box" id="dropzone">
           <div class="upload-icon">📡</div>
           <div class="upload-title">INITIALIZE DRAWING INGESTION</div>
@@ -47,7 +46,6 @@
           <input type="file" id="fileInput" accept="image/*,application/pdf" style="display: none;">
         </div>
 
-        <!-- Uploaded File Card (Shows after upload) -->
         <div class="uploaded-file-card" id="uploadedFileCard" style="display: none;">
           <span id="fileNameText">📄 File Uploaded</span>
           <button class="btn btn-secondary" id="resetFileBtn" style="padding: 0.3rem 0.6rem; font-size: 0.7rem; display: none;">
@@ -55,26 +53,22 @@
           </button>
         </div>
 
-        <!-- Title Block (Antet) Verification Card -->
         <div class="antet-card" id="antetCard" style="display: none;">
           <div class="antet-title">📋 TITLE BLOCK (ANTET) VERIFICATION</div>
           <div class="antet-grid" id="antetGrid"></div>
         </div>
 
-        <!-- Parameter Gatekeeper Audit Card with Wide START FRESH button at the bottom -->
         <div class="antet-card" id="gatekeeperCard" style="display: none; border-color: var(--term-amber);">
           <div class="antet-title" style="color: var(--term-amber); margin-bottom: 0.5rem;">⚠️ PARAMETER AUDIT & VERIFICATION</div>
           <div id="questionsContainer"></div>
           <button class="btn" id="submitAnswersBtn" style="width: 100%; margin-top: 0.75rem;">
             <span>⚡ CONFIRM PARAMETERS & RUN ZOO AGENT API</span>
           </button>
-          <!-- Wide START FRESH button placed directly below CONFIRM button -->
           <button class="btn btn-amber" id="startFreshBtn" style="width: 100%; margin-top: 0.5rem; padding: 0.6rem;">
             <span>🔄 START FRESH (RESET PIPELINE)</span>
           </button>
         </div>
 
-        <!-- Assembly vs Part Inference & Zoo Agent Summary Card -->
         <div class="antet-card" id="inferenceCard" style="border-color: var(--term-cyan);">
           <div class="antet-title" style="color: var(--term-cyan);">🧩 ASSEMBLY / PART CLASSIFICATION & ZOO AGENT SUMMARY</div>
           <div id="inferenceContent">
@@ -84,49 +78,55 @@
           </div>
         </div>
 
-        <!-- Agentic Engineering Loop Card (moved from panel 02) -->
-        <div class="antet-card" id="loopCard" style="display: none; border-color: var(--term-amber);">
-          <div class="antet-title" style="color: var(--term-amber); margin-bottom: 0.5rem;">🤖 AGENTIC ENGINEERING LOOP (Zookeeper + Zoo Engine)</div>
-          <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.75rem;">
-            Zookeeper (Agent API) proposes the part breakdown → Zoo Engine measures every part for real →
-            critic enforces the drawing envelope → iterates until the geometry holds → renders 2D drawings.
-          </div>
-          <button class="btn" id="loopBtn" style="width: 100%;">
-            <span>🔁 RUN ENGINEERING LOOP (SESSION)</span>
-          </button>
-          <div id="loopStatus" style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;"></div>
-        </div>
-
       </div>
     </section>
 
-    <!-- COLUMN 2: Assembly Positions (Pozlar) & DFMA Knowledge -->
-    <section class="panel">
+    <!-- PANEL 02: Agentic Engineering Loop -->
+    <section class="panel" id="panelEngineeringLoop">
       <div class="panel-header">
-        <div class="panel-title">[ 02 // ASSEMBLY POSITIONS (POZLAR) & DFMA KNOWLEDGE ]</div>
+        <div class="panel-title">[ 02 // AGENTIC ENGINEERING LOOP ]</div>
+      </div>
+      <div class="panel-body">
+        <div class="antet-card" id="loopCard" style="border-color: var(--term-amber);">
+          <div class="antet-title" style="color: var(--term-amber); margin-bottom: 0.5rem;">🤖 Zookeeper + Zoo Engine + Critic</div>
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.75rem;">
+            Zookeeper (Agent API) proposes part breakdown → Zoo Engine measures every part for real →
+            critic enforces drawing envelope → iterates until geometry matches → renders 2D technical drawings.
+          </div>
+          <button class="btn" id="loopBtn" style="width: 100%;">
+            <span>🔁 RUN ENGINEERING LOOP</span>
+          </button>
+          <div id="loopStatus" style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANEL 03: Assembly Positions (Pozlar) & DFMA Knowledge -->
+    <section class="panel" id="panelPozlar">
+      <div class="panel-header">
+        <div class="panel-title">[ 03 // ASSEMBLY POSITIONS (POZLAR) & DFMA KNOWLEDGE ]</div>
         <button class="btn btn-secondary" id="explodeBtn" style="padding: 0.4rem 0.85rem; border-color: var(--term-amber); color: var(--term-amber); font-size: 0.75rem; display: none;">
-          <span>💥 EXPLODE TO MANUFACTURE</span>
+          <span>⚙️ MANUFACTURING REVIEW</span>
         </button>
       </div>
 
       <div class="panel-body">
-        
-        <!-- Manufacturability & Mass Summary Card -->
-        <div class="score-badge" id="dfmaScore">
-          <div>
-            <div style="font-size: 0.75rem; color: var(--text-dim);">MANUFACTURABILITY INDEX</div>
-            <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">AWAITING DRAWING INPUT</div>
-          </div>
-          <div class="score-num">--%</div>
+
+        <!-- Manufacturability Gauge -->
+        <div class="gauge-container" id="dfmaScore">
+          <svg class="gauge-svg" viewBox="0 0 120 80">
+            <path class="gauge-bg" d="M 15 70 A 50 50 0 0 1 105 70" fill="none" stroke="var(--term-border)" stroke-width="10" stroke-linecap="round"/>
+            <path class="gauge-fill" id="gaugeFill" d="M 15 70 A 50 50 0 0 1 105 70" fill="none" stroke="var(--term-green)" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 160"/>
+            <text class="gauge-value" id="gaugeText" x="60" y="60" text-anchor="middle" fill="#fff" font-size="18" font-weight="700">--%</text>
+            <text class="gauge-label" x="60" y="76" text-anchor="middle" fill="var(--text-dim)" font-size="8">MANUFACTURABILITY</text>
+          </svg>
         </div>
 
-        <!-- Assembly Knowledge & Metrics -->
         <div id="dfmaMetrics"></div>
 
-        <!-- Positions (Pozlar) Breakdown Container -->
         <div id="positionsContainer" style="display: flex; flex-direction: column; gap: 0.85rem;">
           <div style="color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 2rem; border: 1px dashed var(--term-border);">
-            Ingest a drawing and complete parameter verification to unlock <strong>'EXPLODE TO MANUFACTURE'</strong> capability.
+            Complete the engineering loop to unlock <strong>'MANUFACTURING REVIEW'</strong> capability.
           </div>
         </div>
 
@@ -138,6 +138,7 @@
   <!-- Resizable Bottom Footer Terminal Console -->
   <footer class="footer-terminal" id="footerTerminal">
     <div class="terminal-active-bar" id="terminalActiveBar" style="display: none; width: 0%;"></div>
+    <div class="terminal-light-beam" id="terminalLightBeam"></div>
     <div class="terminal-resize-handle" id="terminalResizeHandle">≡ PULL TO RESIZE TERMINAL LOGS ≡</div>
     <div class="footer-terminal-header">
       <span>> LIVE API CALLER & AGENT STREAM LOGS</span>
@@ -151,6 +152,13 @@
       </div>
     </div>
   </footer>
+
+  <!-- Spinning Gear Indicator (bottom-right) -->
+  <div class="system-gear" id="systemGear" title="System Active">
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.611 3.611 0 0112 15.6z"/>
+    </svg>
+  </div>
 
   <script src="/static/js/app.js"></script>
 </body>
