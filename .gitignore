@@ -16,9 +16,8 @@ app/static/uploads/*
 app/static/renders/*
 !app/static/renders/.gitkeep
 
-# Sample drawings live in the repo (gitignored binaries only)
-library/samples/*
-!library/samples/.gitkeep
+# Sample technical drawings live in the repo (auto-imported into the Library)
+library/samples/.gitkeep
 
 # macOS
 .DS_Store
