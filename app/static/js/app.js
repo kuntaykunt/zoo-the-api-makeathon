@@ -145,6 +145,7 @@ function resetFileUpload() {
   const explodeBtn = document.getElementById("explodeBtn");
   const positionsContainer = document.getElementById("positionsContainer");
   const inferenceContent = document.getElementById("inferenceContent");
+  const kclCard = document.getElementById("kclCard");
 
   if (fileInput) fileInput.value = "";
   if (dropzone) dropzone.style.display = "block";
@@ -152,6 +153,7 @@ function resetFileUpload() {
   if (gatekeeperCard) gatekeeperCard.style.display = "none";
   if (antetCard) antetCard.style.display = "none";
   if (explodeBtn) explodeBtn.style.display = "none";
+  if (kclCard) kclCard.style.display = "none";
 
   if (inferenceContent) {
     inferenceContent.innerHTML = `
@@ -311,6 +313,14 @@ async function submitAnswers() {
     currentKCLCode = data.kcl_code;
     renderDFMAAgent(data.dfma_analysis);
 
+    // Render Synthesized KCL Code into UI box
+    const kclCard = document.getElementById("kclCard");
+    const kclCodeDisplay = document.getElementById("kclCodeDisplay");
+    if (kclCard && kclCodeDisplay) {
+      kclCard.style.display = "block";
+      kclCodeDisplay.textContent = currentKCLCode;
+    }
+
     if (data.model_ready && data.zoo_verification?.model_ready) {
       isZooModelVerified = true;
       streamLog("ZOO_ENGINE_API", `HTTP 200 OK -> Geometry Verification SUCCESS: ${data.zoo_verification.compile_status}`);
@@ -461,16 +471,16 @@ function renderPositionsList(positions) {
 function launchZooStudio(idx, posId) {
   const kclCode = window[`_kcl_pos_${idx}`] || "";
   
+  // Direct sync window open to avoid popup blocking
+  window.open("https://zoo.dev/studio", "_blank");
+
   if (navigator.clipboard) {
     navigator.clipboard.writeText(kclCode).then(() => {
-      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Launching Zoo Studio (zoo.dev/studio)...`);
-      alert(`✅ KCL code for ${posId} copied to clipboard!\n\nOpening Zoo Studio (zoo.dev/studio). Paste (Ctrl+V/Cmd+V) directly into Zoo Studio editor.`);
+      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Opening Zoo Studio (zoo.dev/studio)...`);
     }).catch(err => {
       streamLog("ZOO_STUDIO", `Launching Zoo Studio (zoo.dev/studio)...`);
     });
   }
-
-  window.open("https://zoo.dev/studio", "_blank");
 }
 
 function initActionButtons() {
@@ -492,6 +502,18 @@ function initActionButtons() {
   const explodeBtn = document.getElementById("explodeBtn");
   if (explodeBtn) {
     explodeBtn.addEventListener("click", handleExplodeAssembly);
+  }
+
+  const copyKclBtn = document.getElementById("copyKclBtn");
+  if (copyKclBtn) {
+    copyKclBtn.addEventListener("click", () => {
+      if (currentKCLCode && navigator.clipboard) {
+        navigator.clipboard.writeText(currentKCLCode).then(() => {
+          streamLog("KCL_SYNTHESIZER", "Assembly KCL code copied to clipboard!");
+          alert("✅ Synthesized Assembly KCL code copied to clipboard!");
+        });
+      }
+    });
   }
 }
 

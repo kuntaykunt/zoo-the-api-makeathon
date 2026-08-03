@@ -74,7 +74,7 @@
           </button>
         </div>
 
-        <!-- Assembly vs Part Inference & Zoo Agent Summary Card (Replaces raw KCL box) -->
+        <!-- Assembly vs Part Inference & Zoo Agent Summary Card -->
         <div class="antet-card" id="inferenceCard" style="border-color: var(--term-cyan);">
           <div class="antet-title" style="color: var(--term-cyan);">🧩 ASSEMBLY / PART CLASSIFICATION & ZOO AGENT SUMMARY</div>
           <div id="inferenceContent">
@@ -82,6 +82,17 @@
               Upload a drawing to execute Qwen Vision AI & Zoo Agent classification...
             </div>
           </div>
+        </div>
+
+        <!-- Synthesized KittyCAD KCL Code Display Card -->
+        <div class="antet-card" id="kclCard" style="display: none; border-color: var(--term-cyan);">
+          <div class="antet-title" style="color: var(--term-cyan); display: flex; justify-content: space-between; align-items: center;">
+            <span>💻 SYNTHESIZED KITTYCAD KCL CODE</span>
+            <button class="btn btn-secondary" id="copyKclBtn" style="padding: 0.25rem 0.6rem; font-size: 0.7rem;">
+              📋 COPY KCL
+            </button>
+          </div>
+          <div class="code-editor" id="kclCodeDisplay" style="height: 140px; margin-top: 0.5rem;"></div>
         </div>
 
       </div>
