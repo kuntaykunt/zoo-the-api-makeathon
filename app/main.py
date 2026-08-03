@@ -165,7 +165,6 @@ async def explode_assembly(payload: ExplodeAssemblyRequest):
     })
 
 
-@app.post("/api/engineering-loop/start")
 def _resolve_upload_path(name: str, file_url: str) -> str:
     """Resolve the on-disk path of an uploaded or sample drawing.
 
@@ -204,6 +203,7 @@ def _resolve_upload_path(name: str, file_url: str) -> str:
     raise FileNotFoundError("; ".join(candidates))
 
 
+@app.post("/api/engineering-loop/start")
 async def engineering_start(payload: EngineeringStartRequest):
     """
     Agentic Loop Step 1: open an engineering session. Zookeeper (Agent API) acts
