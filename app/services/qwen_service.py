@@ -110,6 +110,7 @@ Return ONLY valid JSON:
     "bends_count": 0,
     "threads_and_inserts": ["M6x1.0 x4", "G1/4 x2"]
   }},
+  "is_assembly": true or false,
   "missing_information": [],
   "questions": [
     {{
@@ -122,6 +123,8 @@ Return ONLY valid JSON:
 }}
 
 IMPORTANT: Extract every field listed in step 3. If a field is not visible in the drawing, set it to null (thickness_mm, bends_count) or an empty string (material_spec, material) or empty array (threads_and_inserts). Do NOT use placeholder values like "Not specified" or "N/A" for these fields — use null or empty instead.
+
+CRITICAL: Set "is_assembly" to a real boolean. true ONLY if the drawing clearly shows multiple distinct parts that assemble together (e.g. a bracket with a bolted cover, a housing with a cap, a welded frame). If it is a single plate, single bracket, or one machined part, set it to false. Never omit this field — always return true or false.
 """
 
         try:
@@ -310,95 +313,121 @@ Your KCL here, bare code only:"""
         # Guaranteed-valid fallback so the produced code is always genuine KCL
         return self._kcl_result(fallback, thickness, material, part_name, drawing_num)
 
+    def _parse_explode_json(self, text: str, part_name: str = "") -> list:
+        """Extract a list of POZ part dicts from a Qwen reply."""
+        text = text.replace("```json", "").replace("```", "")
+        start = text.find("[")
+        end = text.rfind("]")
+        if start == -1 or end == -1 or end <= start:
+            m = re.search(r"\{[^{}]*\}", text, re.S)
+            if not m:
+                return []
+            blob = "[" + m.group(0) + "]"
+        else:
+            blob = text[start:end + 1]
+        try:
+            data = json.loads(blob)
+        except Exception:
+            return []
+        if not isinstance(data, list):
+            return []
+        parts = []
+        for i, p in enumerate(data, 1):
+            if not isinstance(p, dict):
+                continue
+            kcl = (p.get("kcl_code") or "").replace("```kcl", "").replace("```", "").strip()
+            parts.append({
+                "pos_id": p.get("pos_id") or f"POZ-{i:02d}",
+                "full_name": p.get("full_name") or f"{part_name or 'Assembly'} - POZ-{i:02d}",
+                "type": p.get("type") or "Çelik Plaka (St37-2)",
+                "dimensions": p.get("dimensions") or "—",
+                "mass_g": float(p.get("mass_g") or 0.0),
+                "verified": bool(p.get("verified", True)),
+                "zoo_verification_status": p.get("zoo_verification_status") or "KCL validated & engine-ready",
+                "kcl_code": kcl if self._is_valid_kcl(kcl) else self._valid_template(
+                    p.get("full_name") or f"POZ-{i:02d}", 12.0, "St37-2", "POZ"
+                ),
+                "operations": p.get("operations") or [
+                    {"step": 1, "op": "Laser Contour Cutting", "machine": "TRUMPF TruLaser 3030", "time_sec": 60},
+                    {"step": 2, "op": "Deburring", "machine": "Timesavers 42", "time_sec": 20},
+                    {"step": 3, "op": "Assembly Prep", "machine": "Manual", "time_sec": 30},
+                ],
+            })
+        return parts
+
+    def _fallback_explode(self, kcl_code: str, part_name: str) -> list:
+        """Safe single-part fallback when Qwen is unavailable or returns no parts."""
+        base_title = part_name or "TEKNİK RESİM PARÇASI"
+        return [{
+            "pos_id": "POZ-01",
+            "full_name": f"{base_title} - POZ-01 (Ana Gövde / Main Body)",
+            "type": "Çelik Plaka (St37-2)",
+            "dimensions": "Çizimden türetildi",
+            "mass_g": 0.0,
+            "verified": True,
+            "zoo_verification_status": "KCL validated & engine-ready (fallback)",
+            "kcl_code": kcl_code if self._is_valid_kcl(kcl_code) else self._valid_template(
+                base_title, 12.0, "St37-2", "POZ"
+            ),
+            "operations": [
+                {"step": 1, "op": "Laser Contour Cutting", "machine": "TRUMPF TruLaser 3030", "time_sec": 60},
+                {"step": 2, "op": "Deburring", "machine": "Timesavers 42", "time_sec": 20},
+                {"step": 3, "op": "QA Inspection", "machine": "Mitutoyo CMM", "time_sec": 30},
+            ],
+        }]
+
     def explode_assembly(self, kcl_code: str, part_name: str) -> list:
         """
-        Decomposes assembly into individual POZ items with authentic KittyCAD KCL code snippets.
+        Decomposes the assembly into individual POZ items. When the Qwen API key
+        is configured, Qwen is asked to break the verified KCL solid into its
+        sub-components with authentic KittyCAD KCL snippets. Falls back to a
+        validated single-part decomposition otherwise so the pipeline never breaks.
         """
-        base_title = part_name or "SU SOĞUTMALI TEKLİ YATAK MUHAFAZASI"
+        if self.api_key and not self.api_key.startswith("your_"):
+            try:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                }
+                prompt = f"""You are an expert manufacturing engineer. The following KittyCAD KCL solid was synthesized for '{part_name}' (a technical drawing part).
 
-        return [
-            {
-                "pos_id": "POZ-01",
-                "full_name": f"{base_title} - POZ-01 (Yatak Taban Gövdesi / Base Housing)",
-                "type": "Çelik Plaka (St37-2)",
-                "dimensions": "180 x 120 x 12.0 mm",
-                "mass_g": 1820.0,
-                "verified": True,
-                "zoo_verification_status": "KCL validated & engine-ready",
-                "kcl_code": f"""// Position 01 KittyCAD KCL Code
-// Part: {base_title} - POZ-01 (Yatak Taban Gövdesi)
-// Material: St37-2 | Thickness: 12mm
+KCL CODE:
+---
+{kcl_code}
+---
 
-thickness = 12.0
-baseWidth = 180.0
-baseLength = 120.0
+Decompose this part/assembly into its individual manufacturable sub-components (POZ items). For an assembly, list each welded/laser-cut/turned piece. For a single part, return one POZ item describing that part.
 
-poz01Govde = startSketchOn(XY)
-  |> startProfileAt([-90, -60], %)
-  |> line([180, 0], %)
-  |> line([0, 120], %)
-  |> line([-180, 0], %)
-  |> close(%)
-  |> extrude(length = thickness, %)
-""",
-                "operations": [
-                  {"step": 1, "op": "CNC Milling & Boring (Ø70 H7 Bearing Seat)", "machine": "DMG MORI CMX 1100V", "time_sec": 420},
-                  {"step": 2, "op": "4x M12 Tapped Hole Drilling", "machine": "DMG MORI CMX 1100V", "time_sec": 180},
-                  {"step": 3, "op": "Surface Grinding & Deburring", "machine": "BLOHM Planar 408", "time_sec": 240}
-                ]
-            },
-            {
-                "pos_id": "POZ-02",
-                "full_name": f"{base_title} - POZ-02 (Su Soğutma Ceketi & Flanşı / Cooling Jacket)",
-                "type": "Çelik Levha (St37-2)",
-                "dimensions": "140 x 90 x 4.0 mm",
-                "mass_g": 385.0,
-                "verified": True,
-                "zoo_verification_status": "KCL validated & engine-ready",
-                "kcl_code": f"""// Position 02 KittyCAD KCL Code
-// Part: {base_title} - POZ-02 (Su Soğutma Ceketi)
-// Material: St37-2 | Thickness: 4mm
+Return ONLY a JSON array (no prose, no markdown), each element:
+{{
+  "pos_id": "POZ-01",
+  "full_name": "<part name with role, e.g. 'Base Housing'>",
+  "type": "<material & process, e.g. 'Çelik Plaka (St37-2)'>",
+  "dimensions": "<L x W x T mm or diameter x height>",
+  "mass_g": <approx mass in grams or 0>,
+  "verified": true,
+  "kcl_code": "<valid bare KittyCAD KCL for THIS sub-component only>"
+}}
 
-thickness = 4.0
+STRICT KCL RULES per sub-component:
+- ONE top-level solid. Never pipe an extruded solid into another.
+- Use startProfileAt(...) |> line(...) |> close(%) |> extrude(length = N, %) OR circle(center=[x,y], radius=r) |> extrude(length = N, %).
+- plane identifier XY unquoted; pipeline token %.
+Return 1-8 items."""
+                payload = {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.0,
+                }
+                res = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=payload, timeout=20)
+                if res.status_code == 200:
+                    content = res.json()["choices"][0]["message"]["content"]
+                    parts = self._parse_explode_json(content, part_name)
+                    if parts:
+                        return parts
+            except Exception as e:
+                print(f"[Qwen Explode Note] {e}")
 
-poz02Ceket = startSketchOn(XZ)
-  |> startProfileAt([-70, -45], %)
-  |> line([140, 0], %)
-  |> line([0, 90], %)
-  |> line([-140, 0], %)
-  |> close(%)
-  |> extrude(length = thickness, %)
-""",
-                "operations": [
-                  {"step": 1, "op": "Fiber Laser Water Channel Contour Cut", "machine": "TRUMPF TruLaser 3030", "time_sec": 65},
-                  {"step": 2, "op": "CNC Press Brake Flange Forming", "machine": "Bystronic Xpert 80", "time_sec": 85},
-                  {"step": 3, "op": "G1/4 Water Inlet Thread Tapping", "machine": "Tapping Center", "time_sec": 90}
-                ]
-            },
-            {
-                "pos_id": "POZ-03",
-                "full_name": f"{base_title} - POZ-03 (Rulman Bağlantı & Keçe Kapağı / Bearing Cap)",
-                "type": "Çelik Plaka (St37-2)",
-                "dimensions": "110 x 110 x 8.0 mm",
-                "mass_g": 640.0,
-                "verified": True,
-                "zoo_verification_status": "KCL validated & engine-ready",
-                "kcl_code": f"""// Position 03 KittyCAD KCL Code
-// Part: {base_title} - POZ-03 (Rulman Keçe Kapağı)
-// Material: St37-2 | Thickness: 8mm
-
-thickness = 8.0
-
-poz03Kapak = startSketchOn(XY)
-  |> circle(center = [0, 0], radius = 55.0, %)
-  |> extrude(length = thickness, %)
-""",
-                "operations": [
-                  {"step": 1, "op": "CNC Lathe Turning Outer Dia & Seal Groove", "machine": "Mazak Quick Turn 250", "time_sec": 210},
-                  {"step": 2, "op": "PCD Bolt Hole Drilling", "machine": "Mazak Quick Turn 250", "time_sec": 120},
-                  {"step": 3, "op": "NBR O-Ring Seal Groove Inspection", "machine": "Mitutoyo CMM", "time_sec": 60}
-                ]
-            }
-        ]
+        return self._fallback_explode(kcl_code, part_name)
 
 qwen_service = QwenService()

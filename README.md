@@ -102,7 +102,7 @@ The right-hand agent analyzes the 3D geometry against manufacturing constraints:
 - **AI Vision Engine**: Qwen-VL (via DashScope / OpenAI compatible API)
 - **CAD & Geometry Engine**: [Zoo Engine APIs](https://zoo.dev/) & KittyCAD KCL
 - **Frontend**: HTML5, Modern CSS Glassmorphism Studio UI, JavaScript ES6+
-- **PDF Processing**: Pillow, PyPDF2 / pdf2image
+- **PDF Processing**: Pillow, PyMuPDF (fitz)
 
 ---
 

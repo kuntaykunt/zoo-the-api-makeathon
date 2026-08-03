@@ -210,7 +210,7 @@ function renderInferenceSummary(data) {
   const container = document.getElementById("inferenceContent");
   if (!container) return;
 
-  const isAssembly = data.is_assembly !== false;
+  const isAssembly = data.is_assembly === true;
   const classificationText = isAssembly ? "ASSEMBLY (Multi-Part Drawing Component)" : "SINGLE PART COMPONENT";
   const statusColor = isAssembly ? "var(--term-amber)" : "var(--term-green)";
 

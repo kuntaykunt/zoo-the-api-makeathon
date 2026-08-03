@@ -1,5 +1,7 @@
 import os
 import base64
+import uuid
+import re
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -60,14 +62,22 @@ async def upload_drawing(file: UploadFile = File(...)):
     """
     try:
         contents = await file.read()
-        file_path = f"app/static/uploads/{file.filename}"
+
+        # Sanitize the client-supplied filename to prevent path traversal
+        # (e.g. "../../etc/passwd"). Keep the original stem for display only.
+        safe_name = os.path.basename(file.filename or "drawing")
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", safe_name)
+        if not safe_name:
+            safe_name = "drawing"
+        stored_name = f"{uuid.uuid4().hex}_{safe_name}"
+        file_path = os.path.join("app/static/uploads", stored_name)
         with open(file_path, "wb") as f:
             f.write(contents)
 
-        # Evaluate drawing via Qwen Vision Service
-        eval_result = qwen_service.evaluate_drawing(contents, file.filename)
-        eval_result["file_name"] = file.filename
-        eval_result["file_url"] = f"/static/uploads/{file.filename}"
+        # Evaluate drawing via Qwen Vision Service (keep original name for vision context)
+        eval_result = qwen_service.evaluate_drawing(contents, file.filename or stored_name)
+        eval_result["file_name"] = file.filename or stored_name
+        eval_result["file_url"] = f"/static/uploads/{stored_name}"
 
         return JSONResponse(eval_result)
 
