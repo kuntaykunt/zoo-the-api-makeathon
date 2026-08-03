@@ -469,18 +469,42 @@ function renderPositionsList(positions) {
 }
 
 function launchZooStudio(idx, posId) {
-  const kclCode = window[`_kcl_pos_${idx}`] || "";
+  const kclCode = window[`_kcl_pos_${idx}`] || currentKCLCode || "";
   
-  // Direct sync window open to avoid popup blocking
-  window.open("https://zoo.dev/studio", "_blank");
-
-  if (navigator.clipboard) {
+  // 1. Copy KCL snippet to clipboard for pasting into Zoo Studio
+  if (navigator.clipboard && kclCode) {
     navigator.clipboard.writeText(kclCode).then(() => {
-      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Opening Zoo Studio (zoo.dev/studio)...`);
+      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard!`);
     }).catch(err => {
-      streamLog("ZOO_STUDIO", `Launching Zoo Studio (zoo.dev/studio)...`);
+      console.warn("[Zoo Studio Clipboard] Copy notice:", err);
     });
   }
+
+  streamLog("ZOO_STUDIO", `Launching Zoo Design Studio for '${posId}'...`);
+
+  let appOpened = false;
+  const onBlur = () => {
+    appOpened = true;
+    window.removeEventListener("blur", onBlur);
+    streamLog("ZOO_STUDIO", "Desktop App ('Zoo Design Studio.app') activated!");
+  };
+  window.addEventListener("blur", onBlur);
+
+  // Trigger protocol handler for installed Zoo Design Studio desktop app
+  const iframe = document.createElement("iframe");
+  iframe.style.display = "none";
+  iframe.src = "zoo-studio://";
+  document.body.appendChild(iframe);
+
+  // Fallback to official web app (https://design.zoo.dev) if desktop app is not opened
+  setTimeout(() => {
+    if (document.body.contains(iframe)) document.body.removeChild(iframe);
+    window.removeEventListener("blur", onBlur);
+    if (!appOpened) {
+      streamLog("ZOO_STUDIO", "Opening Zoo Design Web Studio (https://design.zoo.dev)...");
+      window.open("https://design.zoo.dev", "_blank");
+    }
+  }, 800);
 }
 
 function initActionButtons() {
