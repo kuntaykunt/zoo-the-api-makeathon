@@ -3,142 +3,170 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Zoo Auto-CAD & DFMA Pipeline | Zoo The API Makeathon</title>
-  <meta name="description" content="Convert PDF technical drawings into KCL code, 3D CAD models, exploded parts, and automated DFMA manufacturing analysis using Zoo Engine API & Qwen-VL.">
+  <title>COMMAND TERMINAL // ZOO CAD & DFMA AGENT</title>
+  <meta name="description" content="Star Wars 80s Command Terminal Agent for Technical Drawing to KCL 3D CAD & DFMA Manufacturing Operations.">
   <link rel="stylesheet" href="/static/css/style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
-  <!-- Header Navigation -->
+  <!-- Header Command Bar -->
   <header class="app-header">
     <div class="logo-container">
-      <div class="logo-badge">ZOO API</div>
-      <div class="logo-title">Auto-CAD & DFMA Studio</div>
+      <div class="logo-badge">SYSTEM v2.4</div>
+      <div class="logo-title">ZOO CAD & DFMA COMMAND TERMINAL</div>
     </div>
     
     <div class="status-pills">
       <div class="pill online" id="evalStatusPill">
-        <span class="dot"></span> Gatekeeper Ready
+        <span class="dot"></span> AGENT: ONLINE
       </div>
       <div class="pill online">
-        <span class="dot"></span> Zoo Engine API: Online
+        <span class="dot"></span> ZOO API: ONLINE
       </div>
       <div class="pill">
-        🤖 Qwen-VL Vision AI: Active
+        🤖 QWEN-VL AGENT: ACTIVE
       </div>
     </div>
   </header>
 
-  <!-- Studio Main Grid -->
+  <!-- Main Terminal Studio Grid -->
   <main class="studio-grid">
 
-    <!-- PANEL 1: Input & Gatekeeper & KCL Editor -->
+    <!-- PANEL 1: Drawing Input, Antet (Title Block) & Agentic Console -->
     <section class="panel">
       <div class="panel-header">
-        <div class="panel-title">
-          <span>📄 Technical Drawing Input</span>
-        </div>
+        <div class="panel-title">[ 01 // TECHNICAL DRAWING INSPECTION ]</div>
       </div>
       <div class="panel-body">
         
-        <!-- Dropzone -->
+        <!-- Drag and Drop Box (Hides after upload) -->
         <div class="upload-box" id="dropzone">
-          <div class="upload-icon">📤</div>
-          <div class="upload-title">Drop Technical Drawing (PDF / JPEG)</div>
-          <div class="upload-desc">Click or drag 2D engineering drawing file here</div>
+          <div class="upload-icon">📡</div>
+          <div class="upload-title">INITIALIZE DRAWING INGESTION</div>
+          <div class="upload-desc">Drop 2D Technical Drawing (PDF / JPEG) to begin agent inspection</div>
           <input type="file" id="fileInput" accept="image/*,application/pdf" style="display: none;">
         </div>
 
-        <!-- Gatekeeper Q&A Card (Appears if missing info detected by Qwen) -->
-        <div class="gatekeeper-card" id="gatekeeperCard" style="display: none;">
-          <div class="gatekeeper-header">
-            <span>⚙️ Qwen-VL Manufacturability Gatekeeper</span>
-          </div>
-          <div id="questionsContainer"></div>
-          <button class="btn" id="submitAnswersBtn">
-            <span>⚡ Complete Parameters & Generate KCL</span>
+        <!-- Uploaded File Card (Appears after file dropped, disables continuous drop) -->
+        <div class="uploaded-file-card" id="uploadedFileCard" style="display: none;">
+          <span id="fileNameText">📄 File Uploaded</span>
+          <button class="btn btn-secondary" id="resetFileBtn" style="padding: 0.25rem 0.5rem; font-size: 0.65rem;">
+            🔄 CHANGE FILE
           </button>
         </div>
 
-        <!-- KCL Code Editor Display -->
+        <!-- Agentic Reasoning Console -->
         <div>
-          <div style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.35rem; display: flex; justify-content: space-between; align-items: center;">
-            <span>💻 KittyCAD KCL Definition</span>
-            <span style="color: #38bdf8; font-size: 0.65rem;">Auto-Generated</span>
+          <div style="font-size: 0.7rem; font-weight: 700; color: var(--term-green); margin-bottom: 0.35rem; letter-spacing: 1px;">
+            > AGENTIC INSPECTION LOGS
           </div>
-          <div class="code-editor" id="kclEditor">// Upload a technical drawing to generate KittyCAD Language (KCL) code...</div>
+          <div class="terminal-console" id="terminalConsole">
+            <div class="terminal-line">[SYSTEM] Terminal initialized. Awaiting technical drawing file upload...</div>
+          </div>
         </div>
 
-        <!-- Exploded Parts List (Populates on Explode) -->
-        <div id="explodedPartsContainer" class="parts-list" style="display: none;"></div>
+        <!-- Title Block (Antet) Summary Card -->
+        <div class="antet-card" id="antetCard" style="display: none;">
+          <div class="antet-title">📋 TITLE BLOCK (ANTET) SUMMARY</div>
+          <div class="antet-grid" id="antetGrid"></div>
+        </div>
+
+        <!-- Gatekeeper Q&A Card -->
+        <div class="antet-card" id="gatekeeperCard" style="display: none; border-color: var(--term-amber);">
+          <div class="antet-title" style="color: var(--term-amber);">⚠️ PARAMETER AUDIT & VERIFICATION</div>
+          <div id="questionsContainer" style="margin-bottom: 0.75rem;"></div>
+          <button class="btn" id="submitAnswersBtn" style="width: 100%;">
+            <span>⚡ CONFIRM PARAMETERS & SYNTHESIZE KCL</span>
+          </button>
+        </div>
+
+        <!-- KCL Code Display -->
+        <div>
+          <div style="font-size: 0.7rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.35rem; letter-spacing: 1px;">
+            💻 KITTYCAD KCL SYNTHESIS
+          </div>
+          <div class="code-editor" id="kclEditor">// Upload technical drawing to generate KittyCAD Language (KCL) code...</div>
+        </div>
+
+        <!-- Exploded Parts Container -->
+        <div id="explodedPartsContainer" style="display: none; flex-direction: column; gap: 0.5rem;"></div>
 
       </div>
     </section>
 
-    <!-- PANEL 2: Interactive Zoo 3D Viewport -->
+    <!-- PANEL 2: Interactive 3D Viewport & Zoo Studio Gateway -->
     <section class="viewport-panel">
       <div class="panel-header">
-        <div class="panel-title">
-          <span>🧊 Zoo Engine 3D Environment</span>
-        </div>
-        <button class="btn btn-secondary" id="explodeBtn" style="display: none; padding: 0.35rem 0.75rem;">
-          <span>💥 Explode to Manufacture</span>
+        <div class="panel-title">[ 02 // ZOO ENGINE 3D ENVIRONMENT ]</div>
+        <button class="btn btn-secondary" id="explodeBtn" style="display: none; padding: 0.35rem 0.75rem; border-color: var(--term-amber); color: var(--term-amber);">
+          <span>💥 EXPLODE TO MANUFACTURE</span>
         </button>
       </div>
 
       <div class="viewport-canvas">
-        <img id="viewportImg" src="/static/renders/sample_3d_render.png" alt="Zoo KCL 3D Render" class="render-img">
         
-        <div class="render-overlay-stats" id="modelStats">
-          <div class="stat-chip">System: <strong>Zoo Engine API</strong></div>
-          <div class="stat-chip">Language: <strong>KittyCAD (KCL)</strong></div>
+        <!-- Empty State Notice when 3D model is not yet generated -->
+        <div class="empty-viewport-notice" id="emptyViewportNotice">
+          <div style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--term-cyan);">🛸</div>
+          <div style="font-size: 0.9rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.5rem; letter-spacing: 1.5px;">
+            AWAITING 3D CAD MODEL COMPILATION
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 1.25rem;">
+            No active 3D geometry compiled yet. Complete drawing inspection to synthesize KCL code.
+          </div>
+          <a href="https://zoo.dev/studio" target="_blank" class="btn btn-secondary" style="text-decoration: none; font-size: 0.7rem; display: inline-block;">
+            🚀 OPEN KITTYCAD ZOO STUDIO (ZOO.DEV)
+          </a>
         </div>
+
+        <!-- Compiled 3D Model Image Viewport -->
+        <img id="viewportImg" src="" alt="Zoo KCL 3D Render" class="render-img" style="display: none;">
+        
+        <div class="render-overlay-stats" id="modelStats" style="position: absolute; bottom: 1rem; left: 1rem; display: flex; gap: 0.5rem;"></div>
       </div>
     </section>
 
-    <!-- PANEL 3: DFMA & Manufacturing Operations Agent -->
+    <!-- PANEL 3: DFMA & Manufacturing Agent -->
     <section class="panel">
       <div class="panel-header">
-        <div class="panel-title">
-          <span>🤖 DFMA & Manufacturing Agent</span>
-        </div>
+        <div class="panel-title">[ 03 // DFMA & MANUFACTURING AGENT ]</div>
       </div>
       <div class="panel-body">
         
         <!-- Score Card -->
         <div class="score-badge" id="dfmaScore">
           <div>
-            <div style="font-size: 0.75rem; color: #94a3b8;">Manufacturability Score</div>
-            <div style="font-size: 0.8rem; font-weight: 600; color: #f8fafc;">Awaiting Model Input</div>
+            <div style="font-size: 0.7rem; color: var(--text-dim);">MANUFACTURABILITY INDEX</div>
+            <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-main);">AWAITING MODEL INPUT</div>
           </div>
           <div class="score-num">--%</div>
         </div>
 
-        <!-- DFMA Warnings -->
+        <!-- Extended Volume / Mass / Time Metrics Card -->
+        <div id="dfmaMetrics"></div>
+
+        <!-- DFMA Constraint Checks -->
         <div>
-          <div style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.35rem;">
-            🔍 DFMA Constraint Checks
+          <div style="font-size: 0.7rem; font-weight: 700; color: var(--term-amber); margin-bottom: 0.35rem; letter-spacing: 1px;">
+            🔍 DFMA RULE AUDITS
           </div>
           <div id="dfmaWarnings" style="display: flex; flex-direction: column; gap: 0.35rem;">
-            <div class="stat-chip">Awaiting KCL compile to run DFMA checks...</div>
+            <div class="stat-chip">Awaiting KCL compilation to run DFMA checks...</div>
           </div>
         </div>
 
-        <!-- Operations Routing -->
+        <!-- Manufacturing Operations Routing -->
         <div>
-          <div style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; margin-bottom: 0.5rem;">
-            🏭 Recommended Manufacturing Routing
+          <div style="font-size: 0.7rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.5rem; letter-spacing: 1px;">
+            🏭 MANUFACTURING ROUTING & METRICS
           </div>
           <div id="dfmaOps" style="display: flex; flex-direction: column; gap: 0.5rem;">
             <div class="op-card">
               <div class="op-header">
-                <span>Step 1: Fiber Laser Cutting</span>
-                <span style="color: #38bdf8;">--s</span>
+                <span>STEP 1: FIBER LASER CONTOUR CUTTING</span>
+                <span style="color: var(--term-amber);">--s</span>
               </div>
-              <div class="op-desc">Upload a drawing to generate automated process routing.</div>
+              <div class="op-desc">Ingest drawing to generate step-by-step manufacturing routing.</div>
             </div>
           </div>
         </div>
