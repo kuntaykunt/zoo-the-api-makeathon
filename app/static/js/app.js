@@ -445,13 +445,13 @@ function renderPositionsList(positions) {
             <div class="position-title">${pos.full_name}</div>
             <div class="position-meta">${pos.type} • Dimensions: ${pos.dimensions} • Mass: ${pos.mass_g}g</div>
           </div>
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
             <button class="btn btn-secondary" onclick="launchZooStudioWeb(${idx}, '${pos.pos_id}')" style="padding: 0.4rem 0.7rem; font-size: 0.75rem; border-color: var(--term-cyan); color: var(--term-cyan);">
-              🌐 OPEN ZOO WEB
+              🌐 OPEN ZOO WEB (app.zoo.dev)
             </button>
-            <button class="btn btn-secondary" onclick="launchZooStudioApp(${idx}, '${pos.pos_id}')" style="padding: 0.4rem 0.7rem; font-size: 0.75rem; border-color: var(--term-amber); color: var(--term-amber);">
+            <a href="zoo-studio://" onclick="launchZooStudioApp(${idx}, '${pos.pos_id}')" class="btn btn-secondary" style="padding: 0.4rem 0.7rem; font-size: 0.75rem; border-color: var(--term-amber); color: var(--term-amber); text-decoration: none; display: inline-flex; align-items: center;">
               💻 OPEN DESKTOP APP
-            </button>
+            </a>
           </div>
         </div>
 
@@ -475,16 +475,17 @@ function renderPositionsList(positions) {
 
 function launchZooStudioWeb(idx, posId) {
   const kclCode = window[`_kcl_pos_${idx}`] || currentKCLCode || "";
-  
-  // Direct sync window open to avoid popup blockers
-  const win = window.open("https://design.zoo.dev", "_blank");
+  const targetUrl = "https://app.zoo.dev";
+
+  // Direct sync window open to app.zoo.dev
+  window.open(targetUrl, "_blank");
 
   if (navigator.clipboard && kclCode) {
     navigator.clipboard.writeText(kclCode).then(() => {
-      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Opening Zoo Web Studio (https://design.zoo.dev)...`);
-      alert(`✅ KCL code for '${posId}' copied to clipboard!\n\nOpening Zoo Web Studio (design.zoo.dev). Press Cmd+V / Ctrl+V to paste into editor.`);
+      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Opening Zoo Web Studio (${targetUrl})...`);
+      alert(`✅ KCL code for '${posId}' copied to clipboard!\n\nOpening Zoo Web Studio (app.zoo.dev). Press Cmd+V / Ctrl+V to paste into editor.`);
     }).catch(err => {
-      streamLog("ZOO_STUDIO", `Opening Zoo Web Studio (https://design.zoo.dev)...`);
+      streamLog("ZOO_STUDIO", `Opening Zoo Web Studio (${targetUrl})...`);
     });
   }
 }
@@ -494,13 +495,11 @@ function launchZooStudioApp(idx, posId) {
   
   if (navigator.clipboard && kclCode) {
     navigator.clipboard.writeText(kclCode).then(() => {
-      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Launching Zoo Desktop App...`);
-      alert(`✅ KCL code for '${posId}' copied to clipboard!\n\nLaunching Zoo Design Studio desktop app.`);
+      streamLog("ZOO_STUDIO", `SUCCESS: KittyCAD KCL snippet for '${posId}' copied to clipboard! Launching Zoo Desktop App ('Zoo Design Studio.app')...`);
     });
   }
 
-  streamLog("ZOO_STUDIO", `Launching Desktop App (zoo-studio://) for '${posId}'...`);
-  window.location.href = "zoo-studio://";
+  streamLog("ZOO_STUDIO", `Launching Desktop App via zoo-studio:// for '${posId}'...`);
 }
 
 function launchZooStudio(idx, posId) {
