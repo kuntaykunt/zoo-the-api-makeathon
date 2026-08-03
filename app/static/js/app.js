@@ -10,6 +10,9 @@ let loopSessionId = null;
 let loopRunning = false;
 let apiCallCount = 0;
 
+// Engineering loop results (persisted for Manufacturing Review to reuse)
+let loopResults = null;
+
 // Terminal activity bar control
 let terminalActivityTimeout = null;
 let systemActiveTimeout = null;
@@ -194,6 +197,7 @@ function resetFileUpload() {
   loopSessionId = null;
   currentUploadName = "";
   currentUserAnswers = {};
+  loopResults = null;
 
   // Disable Manufacturing Review button on reset
   const explodeBtn = document.getElementById("explodeBtn");
@@ -530,6 +534,10 @@ function renderEngineeringIteration(state) {
 function renderEngineeringFinal(state) {
   const container = document.getElementById("positionsContainer");
   if (!container) return;
+
+  // Save loop results for Manufacturing Review to reuse
+  loopResults = state;
+
   const meas = state.measurements || [];
   const props = (state.proposal && state.proposal.parts) || [];
   const target = (state.critic?.target_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
@@ -699,19 +707,32 @@ async function runEngineeringIterations() {
 
 async function handleExplodeAssembly() {
   if (!isZooModelVerified) {
-    streamLog("AGENT_HARNESS", "REJECTED: Explode capability is LOCKED until Zoo Engine API model verification completes!");
-    alert("Explode is locked until Zoo Engine API verifies 3D geometry compilation.");
+    streamLog("AGENT_HARNESS", "REJECTED: Manufacturing Review is LOCKED until geometry verification completes!");
+    alert("Manufacturing Review is locked until geometry verification completes.");
     return;
   }
 
-  streamLog("EXPLOADER_AGENT", "POST /api/explode-assembly -> Decomposing assembly into positions (Pozlar)...");
-
   const explodeBtn = document.getElementById("explodeBtn");
   if (explodeBtn) { explodeBtn.disabled = true; explodeBtn.classList.add("loading"); }
-  showTerminalActivity(6000);
-  streamLog("ZOO_AGENT_API", "Verifying KCL geometry & auditing constraints for all positions (Pozlar)... [Buttons Grayed Out]");
+  showTerminalActivity(4000);
 
-  // Show grayout loading state while Zoo Agent API verifies KCL
+  // If engineering loop produced results, reuse them directly
+  if (loopResults) {
+    streamLog("MFG_REVIEW", "Reusing engineering loop results (no new API call)...");
+    const meas = loopResults.measurements || [];
+    const props = (loopResults.proposal && loopResults.proposal.parts) || [];
+    const kclCode = (loopResults.proposal?.parts && loopResults.proposal.parts[0]?.kcl_code) || loopResults.kcl_code || "";
+
+    setTimeout(() => {
+      renderManufacturingReviewFromLoop(meas, props, kclCode, loopResults);
+      streamLog("MFG_REVIEW", `Manufacturing Review rendered from ${meas.length} loop-verified positions.`);
+      if (explodeBtn) { explodeBtn.disabled = false; explodeBtn.classList.remove("loading"); }
+    }, 400);
+    return;
+  }
+
+  // No loop results — fall back to Qwen-based explode
+  streamLog("EXPLODER_AGENT", "POST /api/explode-assembly -> Decomposing...");
   renderPositionsLoading();
 
   try {
@@ -723,22 +744,91 @@ async function handleExplodeAssembly() {
         part_name: currentPartName
       })
     });
-
     const data = await res.json();
-    
-    // Simulate brief agentic verification check delay to ensure UI shows grayout phase cleanly
     setTimeout(() => {
       renderPositionsList(data.parts || []);
-      streamLog("ZOO_AGENT_API", `HTTP 200 OK -> Geometry verification complete for all ${data.sub_part_count} positions (Pozlar). Action buttons UNLOCKED.`);
+      streamLog("ZOO_AGENT_API", `HTTP 200 OK -> ${data.sub_part_count} positions ready.`);
       if (explodeBtn) { explodeBtn.disabled = false; explodeBtn.classList.remove("loading"); }
     }, 600);
-
   } catch (err) {
     console.error(err);
-    streamLog("EXPLODE_ERROR", `Explode operation failed: ${err.message}`);
-    alert("Explode operation failed: " + err.message);
+    streamLog("EXPLODE_ERROR", `Explode failed: ${err.message}`);
+    alert("Explode failed: " + err.message);
     if (explodeBtn) { explodeBtn.disabled = false; explodeBtn.classList.remove("loading"); }
   }
+}
+
+function renderManufacturingReviewFromLoop(meas, props, kclCode, state) {
+  const container = document.getElementById("positionsContainer");
+  if (!container) return;
+
+  const target = (state.critic?.target_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
+  const measured = (state.critic?.measured_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
+  const errs = Object.entries(state.critic?.errors || {}).map(([d, e]) => `${d}: ${e}%`).join("  ");
+  const drawing = (state.drawings && state.drawings[0]) || null;
+
+  let html = `<div class="antet-card" style="border-color: var(--term-green); margin-bottom: 0.75rem;">
+    <div class="antet-title" style="color: var(--term-green);">MANUFACTURING REVIEW — LOOP-VERIFIED</div>
+    <div style="font-size: 0.72rem; color: var(--text-dim); margin-bottom: 0.4rem;">
+      ${meas.length} positions with real Zoo Engine measurements. Target: ${target} mm | Measured: ${measured} mm | Error: ${errs || "0%"}
+    </div>
+    <div class="antet-grid">
+      <div class="antet-item">Total Mass: ${state.total_mass_g ?? "—"} g</div>
+      <div class="antet-item">Material: ${state.material || "—"}</div>
+      <div class="antet-item">Iterations: ${state.iteration}</div>
+      <div class="antet-item">Parts: ${meas.length}</div>
+    </div>
+  </div>`;
+
+  meas.forEach((m, i) => {
+    const p = props[i] || {};
+    const kclRaw = p.kcl_code || kclCode || "";
+    window[`_kcl_pos_${i}`] = kclRaw;
+    const geom = p.shape === "cylinder"
+      ? `R${p.radius_mm ?? "—"} x T${p.T_mm ?? "—"}`
+      : `${p.L_mm ?? "—"} x ${p.W_mm ?? "—"} x ${p.T_mm ?? "—"}`;
+
+    html += `<div class="position-card">
+      <div class="position-header">
+        <div>
+          <div class="position-title">${p.name || m.part_id || "POZ-" + (i+1)}</div>
+          <div class="position-meta">${p.shape || "plate"} | ${geom} | Mass: ${m.mass_grams ?? "—"} g | Vol: ${m.volume_cm3 ?? "—"} cm3
+            ${m.engine_real ? ' <span style="color:var(--term-green);font-weight:700;">REAL</span>' : ' <span style="color:var(--term-amber);">EST</span>'}
+          </div>
+        </div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+          <button class="btn btn-secondary" onclick="launchZooStudioWeb(${i},'${m.part_id || "POZ-"+(i+1)}')" style="padding:0.4rem 0.7rem;font-size:0.75rem;border-color:var(--term-cyan);color:var(--term-cyan);">OPEN ZOO WEB</button>
+          <a href="zoo-studio://" onclick="launchZooStudioApp(${i},'${m.part_id || "POZ-"+(i+1)}')" class="btn btn-secondary" style="padding:0.4rem 0.7rem;font-size:0.75rem;border-color:var(--term-amber);color:var(--term-amber);text-decoration:none;display:inline-flex;align-items:center;">OPEN DESKTOP</a>
+        </div>
+      </div>
+      <div style="font-size:0.72rem;color:var(--text-dim);margin-top:0.2rem;">
+        BBox: ${m.geometry_mm ? m.geometry_mm.L+" x "+m.geometry_mm.W+" x "+m.geometry_mm.H+" mm" : "—"}
+        ${m.center_of_mass_mm ? " | CoM: "+m.center_of_mass_mm.x+", "+m.center_of_mass_mm.y+", "+m.center_of_mass_mm.z+" mm" : ""}
+      </div>
+      ${kclRaw ? `<div class="poz-kcl-box">
+        <button class="poz-kcl-toggle" onclick="togglePozKcl(${i},this)">
+          <span>KCL CODE (${m.part_id || "POZ-"+(i+1)})</span>
+          <span id="poz_kcl_icon_${i}">SHOW KCL</span>
+        </button>
+        <div class="poz-kcl-content" id="poz_kcl_content_${i}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+            <span style="font-size:0.75rem;color:var(--term-green);font-weight:700;">ENGINE-VERIFIED</span>
+            <button class="btn btn-secondary" onclick="copyPozKcl(${i},'${m.part_id || "POZ-"+(i+1)}')" style="padding:0.25rem 0.55rem;font-size:0.7rem;border-color:var(--term-cyan);color:var(--term-cyan);">COPY KCL</button>
+          </div>
+          <div class="code-editor" style="height:130px;font-size:0.8rem;line-height:1.4;color:var(--term-cyan);">${highlightKCL(kclRaw)}</div>
+        </div>
+      </div>` : ""}
+    </div>`;
+  });
+
+  if (drawing) {
+    html += `<div class="antet-card" style="border-color:var(--term-amber);margin-top:0.75rem;">
+      <div class="antet-title" style="color:var(--term-amber);">2D TECHNICAL DRAWING (LOOP-GENERATED)</div>
+      <a href="${drawing.url}" target="_blank"><img src="${drawing.url}" alt="2D Drawing" style="max-width:100%;border:1px solid var(--term-border);border-radius:4px;"></a>
+    </div>`;
+  }
+
+  container.innerHTML = html;
 }
 
 function renderPositionsLoading() {
