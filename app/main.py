@@ -215,7 +215,13 @@ async def engineering_start(payload: EngineeringStartRequest):
         path = _resolve_upload_path(name, payload.file_url)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"upload file not found: {name} (searched: {e})")
-    session_id = engineering_loop.create_session(payload.initial_eval, payload.user_answers, path)
+    file_bytes = b""
+    try:
+        with open(path, "rb") as fh:
+            file_bytes = fh.read()
+    except Exception:
+        file_bytes = b""
+    session_id = engineering_loop.create_session(payload.initial_eval, payload.user_answers, path, file_bytes)
     return JSONResponse({"session_id": session_id, "state": engineering_loop.get_state(session_id)})
 
 

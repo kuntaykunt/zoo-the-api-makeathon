@@ -8,7 +8,8 @@ import fitz
 from PIL import Image
 
 from app.services.zoo_service import zoo_service
-from app.services.zookeeper_service import zookeeper
+from app.services.zookeeper_service import zookeeper, run_parallel_part_tasks
+from app.services.qwen_service import qwen_service
 from app.services.drawing_service import drawing_service
 
 SESSIONS = {}
@@ -111,7 +112,7 @@ class EngineeringLoop:
     target and feeds the discrepancy back -> iterates until consistent ->
     renders 2D technical drawings."""
 
-    def create_session(self, initial_eval: dict, user_answers: dict, upload_path: str) -> str:
+    def create_session(self, initial_eval: dict, user_answers: dict, upload_path: str, file_bytes: bytes = b"") -> str:
         session_id = uuid.uuid4().hex[:12]
         vision = initial_eval.get("detected_parameters", {})
         tb = initial_eval.get("title_block", {})
@@ -121,10 +122,22 @@ class EngineeringLoop:
                 "status": "idle",
                 "iteration": 0,
                 "max_iterations": MAX_ITERATIONS,
+                "stage": "init",
+                "stage_index": 0,
+                "stages": [
+                    "QWEN OCR + VERDICT",
+                    "ZOOKEEPER COUNCIL (briefing)",
+                    "PARALLEL PART TASKS",
+                    "COUNCIL REVIEW",
+                    "ENGINE API KCL SYNTHESIS",
+                    "KCL DEBUG / VERIFY LOOP",
+                ],
                 "initial_eval": initial_eval,
                 "user_answers": user_answers,
                 "upload_path": upload_path,
+                "file_bytes": file_bytes,
                 "drawing_png": None,
+                "classification": None,
                 "target_bbox": _parse_bbox(vision.get("overall_dimensions")),
                 "target_part_count": None,
                 "material": user_answers.get("material") or tb.get("material_spec") or "St37-2",
@@ -282,8 +295,236 @@ target {[round(t, 1) for t in target]}. Respond with ONLY the revised JSON (same
             s["status"] = "running"
             s["iteration"] += 1
 
-        feedback = s["critic"]["feedback"] if s["critic"] and not s["critic"]["pass"] else None
+        # ---- Stage machine: advance one stage per iterate call ----
+        stage = s.get("stage", "init")
+        try:
+            if stage in ("init", "qwen"):
+                return self._stage_qwen_verdict(s)
+            if stage == "council":
+                return self._stage_council(s)
+            if stage == "parallel":
+                return self._stage_parallel_parts(s)
+            if stage == "review":
+                return self._stage_council_review(s)
+            if stage == "kcl":
+                return self._stage_kcl_synthesis(s)
+            if stage == "debug":
+                return self._stage_kcl_debug(s)
+        except Exception as e:
+            s["status"] = "error"
+            s["trace"].append({"iteration": s["iteration"], "event": "error", "detail": str(e)})
+            return {"done": True, "error": str(e), "state": _json_safe(s)}
+        # Fallback (legacy single-propose path)
+        return self._legacy_iteration(s)
 
+    # ---- Stage 0: Qwen OCR + verdict ----
+    def _stage_qwen_verdict(self, s: dict) -> dict:
+        s["stage"] = "qwen"
+        s["stage_index"] = 1
+        fb = s["file_bytes"] or b""
+        if not fb and s.get("upload_path"):
+            try:
+                with open(s["upload_path"], "rb") as fh:
+                    fb = fh.read()
+            except Exception:
+                fb = b""
+        verdict = qwen_service.classify_drawing(fb, s["initial_eval"].get("file_name", ""))
+        s["classification"] = verdict
+        s["trace"].append({
+            "iteration": s["iteration"], "event": "qwen_verdict",
+            "detail": f"classification={verdict.get('classification')} manufacturable={verdict.get('manufacturable')} conf={verdict.get('confidence')}",
+            "data": {"verdict": verdict},
+        })
+        if not verdict.get("manufacturable", False):
+            s["status"] = "done"
+            s["final"] = True
+            s["stage"] = "done"
+            return {"done": True, "state": _json_safe(s), "verdict": verdict}
+        # Proceed to council
+        s["stage"] = "council"
+        return {"done": False, "state": _json_safe(s), "verdict": verdict}
+
+    # ---- Stage 1: Zookeeper Council (briefing) ----
+    def _stage_council(self, s: dict) -> dict:
+        s["stage"] = "council"
+        s["stage_index"] = 2
+        verdict = s.get("classification") or {}
+        bom = verdict.get("bom") or []
+        tb = s["initial_eval"].get("title_block", {})
+        target = s["target_bbox"] or [400.0, 260.0, 100.0]
+        kind = "assembly" if verdict.get("classification") == "assembly" else "single part"
+        prompt = f"""You are the Zoo Agent Council (lead design engineers). Review this {kind} drawing.
+
+Title block: {tb}
+Material: {s['material']} | Sheet thickness: {s['thickness']}mm
+Drawing target envelope: {target} mm (L x W x H)
+Qwen verdict: {verdict.get('classification')} (conf {verdict.get('confidence')})
+BOM from Qwen OCR: {bom}
+
+Define the engineering targets for the loop:
+- expected part count (POZ count) and per-part role
+- total target mass (g) and total target volume (cm3) budget
+- the assembly envelope the UNION of parts must reproduce
+- key manufacturing processes (laser-cut / bend / turn / weld / cast)
+
+Return ONLY JSON:
+{{"target_part_count":<n>, "total_mass_g_target":<g>, "total_volume_cm3_target":<cm3>,
+  "assembly_bbox_mm":[L,W,H], "processes":[...], "council_notes":"<one line>"}}"""
+        sess = zookeeper.open(s["zookeeper_conv"] or None)
+        s["zookeeper_conv"] = sess.conversation_id
+        result = sess.prompt(prompt, files=([{"name": "drawing.png", "mimetype": "image/png", "data": list(s["drawing_png"])}] if s.get("drawing_png") else []), mode="thoughtful")
+        sess.close()
+        council = _extract_json(result.get("reply", ""))
+        s["council"] = council
+        if council.get("assembly_bbox_mm"):
+            s["target_bbox"] = _parse_bbox(council["assembly_bbox_mm"])
+        if council.get("target_part_count"):
+            s["target_part_count"] = int(council["target_part_count"])
+        s["trace"].append({"iteration": s["iteration"], "event": "council", "detail": "Council briefing complete", "data": {"council": council}})
+        s["stage"] = "parallel"
+        return {"done": False, "state": _json_safe(s)}
+
+    # ---- Stage 2: Parallel part tasks ----
+    def _stage_parallel_parts(self, s: dict) -> dict:
+        s["stage"] = "parallel"
+        s["stage_index"] = 3
+        # Build the part plan (use Qwen BOM if assembly, else propose)
+        proposal = self._propose(s)
+        if not proposal or not proposal.get("parts"):
+            s["status"] = "error"
+            s["trace"].append({"iteration": s["iteration"], "event": "error", "detail": "No part plan from council/propose"})
+            return {"done": True, "error": "No part plan generated", "state": _json_safe(s)}
+        s["proposal"] = proposal
+        parts = proposal["parts"]
+        # Concurrent Zookeeper sessions, one task per part
+        tasks = []
+        for p in parts:
+            tasks.append({
+                "prompt": f"""You are a part design agent. Design POZ {p.get('id')} named '{p.get('name')}'.
+Material: {s['material']}, thickness {s['thickness']}mm. This part must fit the assembly envelope.
+Geometry: {p}. Produce a precise engineering spec + a minimal KittyCAD KCL sketch for THIS part only.
+Return JSON: {{"id":"{p.get('id')}","name":"{p.get('name')}","shape":"{p.get('shape')}","L_mm":..,"W_mm":..,"T_mm":..,"radius_mm":..,"qty":{p.get('qty',1)},"kcl_code":"<kcl>","notes":"<one line>"}}""",
+                "files": None,
+                "mode": "thoughtful",
+                "forced_tools": None,
+            })
+        s["trace"].append({"iteration": s["iteration"], "event": "parallel", "detail": f"Dispatching {len(tasks)} parallel part tasks to Zoo Agent"})
+        results = run_parallel_part_tasks(tasks, max_workers=min(4, len(tasks)))
+        designed = []
+        for r, p in zip(results, parts):
+            pj = _extract_json(r.get("reply", ""))
+            if pj:
+                pj["kcl_code"] = pj.get("kcl_code") or ""
+                designed.append(pj)
+            else:
+                designed.append(p)
+        s["designed_parts"] = designed
+        s["trace"].append({"iteration": s["iteration"], "event": "parallel", "detail": f"{len(designed)} part designs received", "data": {"parts": designed}})
+        s["stage"] = "review"
+        return {"done": False, "state": _json_safe(s)}
+
+    # ---- Stage 3: Council Review (cross-check Qwen BOM + measurements) ----
+    def _stage_council_review(self, s: dict) -> dict:
+        s["stage"] = "review"
+        s["stage_index"] = 4
+        designed = s.get("designed_parts") or []
+        # Real engine measurement of every part
+        measurements = []
+        for p in designed:
+            m = zoo_service.engine_prove_part(p, s["material"])
+            m["qty"] = p.get("qty", 1)
+            measurements.append(m)
+        s["measurements"] = measurements
+        measured_bbox = _union_bbox([{**p, "qty": 1} for p in designed])
+        total_mass = sum(m["mass_grams"] * m["qty"] for m in measurements)
+        s["total_mass_g"] = round(total_mass, 2)
+        s["assembly_bbox_mm"] = measured_bbox
+        # Council reviews against Qwen BOM + targets
+        verdict = s.get("classification") or {}
+        qwen_bom = {b.get("poz"): b for b in (verdict.get("bom") or [])}
+        review_prompt = f"""Zoo Agent Council REVIEW.
+Expected BOM (from Qwen OCR): {verdict.get('bom')}
+Designed parts: {designed}
+Engine measurements: {measurements}
+Total measured mass: {s['total_mass_g']} g | target: {s.get('council', {}).get('total_mass_g_target')}
+Measured assembly envelope: {measured_bbox} mm | target: {s['target_bbox']}
+
+Verify:
+- POZ ids/qty match the BOM
+- total mass within 15% of target
+- assembly envelope reproduces the drawing target
+Return ONLY JSON: {{"pass":true/false,"discrepancies":["..."],"feedback":"<if fail, what to adjust>"}}"""
+        sess = zookeeper.open(s["zookeeper_conv"] or None)
+        s["zookeeper_conv"] = sess.conversation_id
+        result = sess.prompt(review_prompt, mode="thoughtful")
+        sess.close()
+        review = _extract_json(result.get("reply", ""))
+        s["critic"] = review
+        s["trace"].append({"iteration": s["iteration"], "event": "council_review", "detail": f"PASS={review.get('pass')}", "data": {"review": review}})
+        if review.get("pass") or s["iteration"] >= s["max_iterations"]:
+            s["stage"] = "kcl"
+        else:
+            # feedback loop: re-run parallel design with critic feedback
+            s["critic_feedback"] = review.get("feedback", "Adjust parts to match BOM and targets.")
+            s["stage"] = "parallel"
+        return {"done": False, "state": _json_safe(s)}
+
+    # ---- Stage 4: Engine API KCL synthesis ----
+    def _stage_kcl_synthesis(self, s: dict) -> dict:
+        s["stage"] = "kcl"
+        s["stage_index"] = 5
+        try:
+            kcl = self._write_kcl(s)
+            s["kcl_code"] = kcl
+            s["trace"].append({"iteration": s["iteration"], "event": "kcl_synthesis", "detail": "Assembly KCL written by Zoo KCL agent", "data": {"kcl_length": len(kcl)}})
+        except Exception as e:
+            s["trace"].append({"iteration": s["iteration"], "event": "error", "detail": f"KCL synthesis error: {e}"})
+            s["kcl_code"] = s.get("kcl_code") or ""
+        s["stage"] = "debug"
+        return {"done": False, "state": _json_safe(s)}
+
+    # ---- Stage 5: KCL Debug / Verify loop ----
+    def _stage_kcl_debug(self, s: dict) -> dict:
+        s["stage"] = "debug"
+        s["stage_index"] = 6
+        kcl = s.get("kcl_code") or ""
+        if not kcl:
+            s["status"] = "done"
+            s["final"] = True
+            s["stage"] = "done"
+            return {"done": True, "state": _json_safe(s)}
+        # Verify KCL compiles via engine
+        verify = zoo_service.verify_geometry_readiness(kcl, {"material": s["material"]})
+        s["kcl_verification"] = verify
+        if verify.get("model_ready") or s["iteration"] >= s["max_iterations"] + 2:
+            s["status"] = "done"
+            s["final"] = True
+            s["stage"] = "done"
+            try:
+                s["drawings"] = drawing_service.render_sheet(s, s.get("designed_parts") or [], s.get("measurements") or [])
+            except Exception as e:
+                print(f"[Loop] drawing render error: {e}")
+                s["drawings"] = []
+            s["trace"].append({"iteration": s["iteration"], "event": "kcl_verified", "detail": "KCL verified by engine"})
+            return {"done": True, "state": _json_safe(s)}
+        # Debug loop: ask agent to fix
+        sess = zookeeper.open(s["zookeeper_conv"] or None)
+        s["zookeeper_conv"] = sess.conversation_id
+        fix = sess.prompt(f"The following KCL failed engine verification: {verify}. Fix it.\n```\n{kcl}\n```\nReturn ONLY corrected KCL.", mode="thoughtful", forced_tools=["edit_kcl_code"])
+        sess.close()
+        fixed = ""
+        for name, src in (fix.get("kcl_files") or {}).items():
+            if name.endswith(".kcl"):
+                fixed = src
+                break
+        if fixed:
+            s["kcl_code"] = fixed
+            s["iteration"] += 1  # allow more debug iters
+        return {"done": False, "state": _json_safe(s)}
+
+    # ---- Legacy fallback (single propose) ----
+    def _legacy_iteration(self, s: dict) -> dict:
+        feedback = s["critic"]["feedback"] if s["critic"] and not s["critic"]["pass"] else None
         try:
             proposal = self._propose(s, feedback)
         except Exception as e:

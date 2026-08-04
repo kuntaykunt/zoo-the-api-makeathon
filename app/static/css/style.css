@@ -834,3 +834,132 @@ body {
 .lib-imgwrap { margin-top: 0.5rem; background: #000; border: 1px solid var(--term-border); border-radius: 3px; padding: 0.5rem; text-align: center; }
 .lib-imgwrap img { max-width: 100%; max-height: 280px; }
 
+/* ============ PROCESSING OVERLAY + INDICATORS ============ */
+.proc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 5, 8, 0.55);
+  backdrop-filter: blur(1.5px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+.proc-overlay.active { display: flex; }
+.proc-spinner {
+  width: 64px; height: 64px;
+  border: 3px solid rgba(0, 243, 255, 0.15);
+  border-top-color: var(--term-cyan);
+  border-right-color: var(--term-amber);
+  border-radius: 50%;
+  animation: procspin 0.9s linear infinite;
+  box-shadow: 0 0 18px rgba(0, 243, 255, 0.4);
+}
+@keyframes procspin { to { transform: rotate(360deg); } }
+.proc-text {
+  color: var(--term-cyan);
+  font-size: 0.95rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--term-cyan);
+  min-height: 1.2rem;
+}
+.proc-sub {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  letter-spacing: 1px;
+}
+
+/* Scan line sweeping across the main panel while processing */
+.scanline {
+  position: fixed;
+  left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--term-cyan), transparent);
+  box-shadow: 0 0 12px var(--term-cyan);
+  opacity: 0;
+  z-index: 8500;
+  pointer-events: none;
+}
+.scanline.active {
+  opacity: 1;
+  animation: scanmove 1.6s ease-in-out infinite;
+}
+@keyframes scanmove {
+  0%   { top: 8%; }
+  50%  { top: 92%; }
+  100% { top: 8%; }
+}
+
+/* Stage stepper */
+.stepper {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.6rem;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--term-border);
+  border-radius: 3px;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  padding: 0.25rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+.step .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #333; box-shadow: none;
+}
+.step.active {
+  color: #000; background: var(--term-cyan);
+  border-color: var(--term-cyan);
+  box-shadow: 0 0 10px var(--term-cyan);
+}
+.step.active .dot { background: #000; }
+.step.done { color: var(--term-green); border-color: var(--term-green); }
+.step.done .dot { background: var(--term-green); box-shadow: 0 0 6px var(--term-green); }
+.step.err { color: var(--term-red); border-color: var(--term-red); }
+.step.err .dot { background: var(--term-red); }
+
+/* Per-part cards (parallel tasks) */
+.part-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+.part-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--term-border);
+  border-radius: 3px;
+  font-size: 0.74rem;
+}
+.part-card .pc-name { color: #fff; font-weight: 700; }
+.part-card .pc-meta { color: var(--text-dim); font-size: 0.66rem; }
+.part-card .pc-spin {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(0,243,255,0.2);
+  border-top-color: var(--term-cyan);
+  border-radius: 50%;
+  animation: procspin 0.8s linear infinite;
+  margin-left: auto;
+}
+.part-card.done { border-color: var(--term-green); }
+.part-card.done .pc-spin { display: none; }
+.part-card.done::after { content: "OK"; color: var(--term-green); margin-left: auto; font-weight: 700; }
+
+

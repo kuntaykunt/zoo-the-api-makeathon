@@ -154,3 +154,43 @@ class ZookeeperSession:
 
 
 zookeeper = ZookeeperAgent()
+
+import concurrent.futures
+
+
+def run_parallel_part_tasks(tasks: list, max_workers: int = 4) -> list:
+    """
+    Execute multiple Zookeeper part-design tasks concurrently.
+
+    `tasks` is a list of dicts:
+        {"prompt": str, "files": list|None, "mode": str, "forced_tools": list|None}
+    Returns a list (same order) of result dicts from ZookeeperSession.prompt().
+
+    Uses a fresh WebSocket session per task via a thread pool so the agent
+    works each part in parallel. Falls back to sequential if threading is
+    unavailable or the API rejects concurrent connections.
+    """
+    def _one(task):
+        sess = None
+        try:
+            sess = zookeeper.open(None)
+            return sess.prompt(
+                task.get("prompt", ""),
+                files=task.get("files"),
+                mode=task.get("mode", "thoughtful"),
+                forced_tools=task.get("forced_tools"),
+            )
+        except Exception as e:
+            return {"reply": "", "reasoning": "", "tools": [], "kcl_files": {}, "error": str(e)}
+        finally:
+            if sess:
+                try:
+                    sess.close()
+                except Exception:
+                    pass
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+            return list(ex.map(_one, tasks))
+    except Exception:
+        return [_one(t) for t in tasks]

@@ -645,6 +645,7 @@ async function startEngineeringLoop() {
   const statusBox = document.getElementById("loopStatus");
   if (statusBox) statusBox.innerHTML = "";
 
+  showProcessingOverlay("INITIALIZING ENGINEERING LOOP", "Opening Zookeeper session...");
   streamLog("AGENT_LOOP", "POST /api/engineering-loop/start -> Opening Zookeeper engineering session...");
   showTerminalActivity(10000);
   try {
@@ -697,6 +698,7 @@ async function runEngineeringIterations() {
     }
     const state = data.state;
     if (!state) throw new Error("no state returned");
+    updateStageUI(state);
 
     // Log reasoning from trace
     const trace = state.trace || [];
@@ -739,6 +741,76 @@ async function runEngineeringIterations() {
     }
   }
   window._loopIter = 0;
+  hideProcessingOverlay();
+}
+
+// ---- Stage UI helpers (processing overlay + stepper + part cards) ----
+function showProcessingOverlay(text, sub) {
+  const ov = document.getElementById("procOverlay");
+  if (ov) ov.classList.add("active");
+  const sl = document.getElementById("scanline");
+  if (sl) sl.classList.add("active");
+  if (text) { const t = document.getElementById("procText"); if (t) t.textContent = text; }
+  if (sub) { const s = document.getElementById("procSub"); if (s) s.textContent = sub; }
+}
+
+function hideProcessingOverlay() {
+  const ov = document.getElementById("procOverlay");
+  if (ov) ov.classList.remove("active");
+  const sl = document.getElementById("scanline");
+  if (sl) sl.classList.remove("active");
+}
+
+function updateStageUI(state) {
+  const stages = state.stages || ["QWEN OCR + VERDICT", "ZOOKEEPER COUNCIL (briefing)", "PARALLEL PART TASKS", "COUNCIL REVIEW", "ENGINE API KCL SYNTHESIS", "KCL DEBUG / VERIFY LOOP"];
+  const idx = (typeof state.stage_index === "number") ? state.stage_index : 0;
+  const stageName = state.stage || "init";
+  let overlayText = "PROCESSING";
+  let overlaySub = "";
+  if (stageName === "qwen") { overlayText = "QWEN OCR + VERDICT"; overlaySub = "Classifying drawing: single | assembly | non-manufacturable"; }
+  else if (stageName === "council") { overlayText = "ZOOKEEPER COUNCIL"; overlaySub = "Briefing: part count, mass & volume targets"; }
+  else if (stageName === "parallel") { overlayText = "PARALLEL PART TASKS"; overlaySub = "Zoo Agent designing each POZ concurrently"; }
+  else if (stageName === "review") { overlayText = "COUNCIL REVIEW"; overlaySub = "Cross-checking BOM + engine measurements"; }
+  else if (stageName === "kcl") { overlayText = "ENGINE API KCL SYNTHESIS"; overlaySub = "Writing assembly KCL script"; }
+  else if (stageName === "debug") { overlayText = "KCL DEBUG / VERIFY"; overlaySub = "Compiling & debugging KCL via engine"; }
+  else if (stageName === "done") { overlayText = "COMPLETE"; overlaySub = "Engineering loop finished"; }
+  showProcessingOverlay(overlayText, overlaySub);
+
+  // Stepper
+  let stepper = document.getElementById("loopStepper");
+  if (!stepper) {
+    stepper = document.createElement("div");
+    stepper.id = "loopStepper";
+    stepper.className = "stepper";
+    const lb = document.getElementById("loopStatus");
+    if (lb) lb.parentNode.insertBefore(stepper, lb);
+  }
+  stepper.innerHTML = stages.map((st, i) => {
+    let cls = "step";
+    if (i < idx) cls += " done";
+    else if (i === idx - 1 || (idx === 0 && i === 0)) cls += " active";
+    if (state.status === "error" && i === idx - 1) cls += " err";
+    return `<div class="${cls}"><span class="dot"></span>${i + 1}. ${st}</div>`;
+  }).join("");
+
+  // Per-part cards during parallel stage
+  const designed = state.designed_parts || [];
+  let pc = document.getElementById("loopPartCards");
+  if (stageName === "parallel" || stageName === "review") {
+    if (!pc) {
+      pc = document.createElement("div");
+      pc.id = "loopPartCards";
+      pc.className = "part-cards";
+      stepper.parentNode.insertBefore(pc, stepper.nextSibling);
+    }
+    const proposalParts = (state.proposal && state.proposal.parts) || designed;
+    pc.innerHTML = proposalParts.map((p, i) => {
+      const done = designed[i] && designed[i].kcl_code;
+      return `<div class="part-card ${done ? "done" : ""}"><span class="pc-name">${escapeHtml(p.id || ("POZ-" + String(i + 1).padStart(2, "0")))}</span><span class="pc-meta">${escapeHtml(p.name || "part")}</span>${done ? "" : '<div class="pc-spin"></div>'}</div>`;
+    }).join("");
+  } else if (pc) {
+    pc.remove();
+  }
 }
 
 async function handleExplodeAssembly() {

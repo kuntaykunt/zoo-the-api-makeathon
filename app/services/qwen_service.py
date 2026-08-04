@@ -430,4 +430,98 @@ Return 1-8 items."""
 
         return self._fallback_explode(kcl_code, part_name)
 
+    def classify_drawing(self, file_bytes: bytes, original_filename: str = "") -> dict:
+        """
+        Stage 0 verdict: Is this a single part, a multi-part (BOM / assembly) drawing,
+        or non-manufacturable? Returns a structured classification the loop uses to
+        branch its orchestration.
+        """
+        image_base64 = self.normalize_image_to_jpeg_b64(file_bytes, original_filename)
+
+        if not self.api_key or self.api_key.startswith("your_"):
+            # Fallback: guess from detected_parameters if available downstream.
+            return {
+                "error": True,
+                "classification": "unknown",
+                "manufacturable": False,
+                "confidence": 0.0,
+                "bom": [],
+                "notes": "QWEN_API_KEY missing; cannot classify drawing.",
+            }
+
+        prompt = """You are a senior manufacturing engineer reviewing a technical drawing.
+Classify the drawing and extract its Bill of Materials (BOM).
+
+Return ONLY this JSON (no prose, no markdown):
+{
+  "classification": "single" | "assembly" | "non_manufacturable",
+  "manufacturable": true | false,
+  "confidence": <0.0-1.0>,
+  "notes": "<one line: why it is/isn't manufacturable, key processes>",
+  "overall_dimensions": "<L x W x H mm or diameter x height>",
+  "bom": [
+    {"poz": "POZ-01", "name": "<part name>", "qty": 1, "process": "laser-cut|bent|turned|welded|cast"},
+    ...
+  ]
+}
+
+Rules:
+- "single": ONE physical part, no separate sub-parts to assemble.
+- "assembly": multiple distinct parts that assemble together (has a BOM / Poz list,
+  welded bracket, housing with cap, bolted cover, etc.).
+- "non_manufacturable": impossible to produce (missing critical dims, contradictory
+  geometry, no material spec, pure schematic/diagram).
+- For "single", bom is a single entry (the part itself), qty 1.
+- For "assembly", bom lists every Poz with its qty and dominant process.
+- Numbers and short strings only. JSON only."""
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+                "response_format": {"type": "json_object"},
+            }
+            res = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=payload, timeout=35)
+            if res.status_code == 200:
+                content = res.json()["choices"][0]["message"]["content"]
+                parsed = json.loads(content)
+                parsed["error"] = False
+                # Normalise
+                cls = (parsed.get("classification") or "unknown").lower()
+                if cls not in ("single", "assembly", "non_manufacturable"):
+                    cls = "unknown"
+                parsed["classification"] = cls
+                parsed.setdefault("manufacturable", cls != "non_manufacturable")
+                parsed.setdefault("bom", [])
+                parsed.setdefault("confidence", 0.0)
+                return parsed
+            return {
+                "error": True,
+                "classification": "unknown",
+                "manufacturable": False,
+                "notes": f"Qwen API Error {res.status_code}: {res.text[:200]}",
+                "bom": [],
+            }
+        except Exception as e:
+            return {
+                "error": True,
+                "classification": "unknown",
+                "manufacturable": False,
+                "notes": f"Qwen classify exception: {e}",
+                "bom": [],
+            }
+
 qwen_service = QwenService()
+
