@@ -923,75 +923,162 @@ function renderManufacturingReviewFromLoop(meas, props, kclFiles, state) {
   const container = document.getElementById("positionsContainer");
   if (!container) return;
 
-  const kclCode = (typeof kclFiles === 'object' && Object.keys(kclFiles).length > 0)
-    ? Object.values(kclFiles)[0] : "";
-  const target = (state.critic?.target_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
-  const measured = (state.critic?.measured_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
-  const errs = Object.entries(state.critic?.errors || {}).map(([d, e]) => `${d}: ${e}%`).join("  ");
-  const drawing = (state.drawings && state.drawings[0]) || null;
+  const recipe = state.recipe || {};
+  const recipeData = recipe.recipe || {};
+  const recipeParts = recipe.parts || [];
+  const tb = state.initial_eval?.title_block || {};
+  const material = state.material || "St37-2";
+  const density = meas[0]?.density_g_cm3 || 7.85;
 
-  let html = `<div class="antet-card" style="border-color: var(--term-green); margin-bottom: 0.75rem;">
-    <div class="antet-title" style="color: var(--term-green);">MANUFACTURING REVIEW — LOOP-VERIFIED</div>
-    <div style="font-size: 0.72rem; color: var(--text-dim); margin-bottom: 0.4rem;">
-      ${meas.length} positions with real Zoo Engine measurements. Target: ${target} mm | Measured: ${measured} mm | Error: ${errs || "0%"}
-    </div>
-    <div class="antet-grid">
-      <div class="antet-item">Total Mass: ${state.total_mass_g ?? "—"} g</div>
-      <div class="antet-item">Material: ${state.material || "—"}</div>
-      <div class="antet-item">Iterations: ${state.iteration}</div>
-      <div class="antet-item">Parts: ${meas.length}</div>
-    </div>
-  </div>`;
+  // ---- KCL code (all files) ----
+  const kclEntries = Object.entries(kclFiles || {});
+  const allKcl = kclEntries.map(([n, s]) => `// ${n}\n${s}`).join("\n\n");
 
-  meas.forEach((m, i) => {
+  // ---- Material unit cost (€/kg) ----
+  const matCostPerKg = { "St37-2": 1.5, "Steel": 1.5, "Inox": 4.0, "304": 4.0, "Aluminum": 3.5, "Al6061": 3.5, "Copper": 9.0, "Brass": 8.0, "Bronze": 8.5, "Titanium": 25.0, "Zinc": 3.0, "Cast Iron": 2.0 };
+  const unitMatCost = matCostPerKg[material] || 1.5;
+
+  // ---- Operation costs ----
+  const opRates = { "laser-cut": { rate: 1.2, unit: "€/min" }, "turn": { rate: 2.0, unit: "€/min" }, "mill": { rate: 2.5, unit: "€/min" }, "bend": { rate: 0.8, unit: "€/bend" }, "weld": { rate: 1.5, unit: "€/min" }, "paint": { rate: 0.5, unit: "€/dm²" }, "cast": { rate: 5.0, unit: "€/kg" }, "assembly": { rate: 1.0, unit: "€/min" } };
+
+  // ---- Build BOM rows ----
+  let totalMatCost = 0, totalMass = 0;
+  const bomRows = meas.map((m, i) => {
     const p = props[i] || {};
-    const kclRaw = p.kcl_code || kclCode || "";
-    window[`_kcl_pos_${i}`] = kclRaw;
-    const geom = p.shape === "cylinder"
-      ? `R${p.radius_mm ?? "—"} x T${p.T_mm ?? "—"}`
-      : `${p.L_mm ?? "—"} x ${p.W_mm ?? "—"} x ${p.T_mm ?? "—"}`;
-
-    html += `<div class="position-card">
-      <div class="position-header">
-        <div>
-          <div class="position-title">${p.name || m.part_id || "POZ-" + (i+1)}</div>
-          <div class="position-meta">${p.shape || "plate"} | ${geom} | Mass: ${m.mass_grams ?? "—"} g | Vol: ${m.volume_cm3 ?? "—"} cm3
-            ${m.engine_real ? ' <span style="color:var(--term-green);font-weight:700;">REAL</span>' : ' <span style="color:var(--term-amber);">EST</span>'}
-          </div>
-        </div>
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-          <button class="btn btn-secondary" onclick="launchZooStudioWeb(${i},'${m.part_id || "POZ-"+(i+1)}')" style="padding:0.4rem 0.7rem;font-size:0.75rem;border-color:var(--term-cyan);color:var(--term-cyan);">OPEN ZOO WEB</button>
-          <a href="zoo-studio://" onclick="launchZooStudioApp(${i},'${m.part_id || "POZ-"+(i+1)}')" class="btn btn-secondary" style="padding:0.4rem 0.7rem;font-size:0.75rem;border-color:var(--term-amber);color:var(--term-amber);text-decoration:none;display:inline-flex;align-items:center;">OPEN DESKTOP</a>
-        </div>
-      </div>
-      <div style="font-size:0.72rem;color:var(--text-dim);margin-top:0.2rem;">
-        BBox: ${m.geometry_mm ? m.geometry_mm.L+" x "+m.geometry_mm.W+" x "+m.geometry_mm.H+" mm" : "—"}
-        ${m.center_of_mass_mm ? " | CoM: "+m.center_of_mass_mm.x+", "+m.center_of_mass_mm.y+", "+m.center_of_mass_mm.z+" mm" : ""}
-      </div>
-      ${kclRaw ? `<div class="poz-kcl-box">
-        <button class="poz-kcl-toggle" onclick="togglePozKcl(${i},this)">
-          <span>KCL CODE (${m.part_id || "POZ-"+(i+1)})</span>
-          <span id="poz_kcl_icon_${i}">SHOW KCL</span>
-        </button>
-        <div class="poz-kcl-content" id="poz_kcl_content_${i}">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-            <span style="font-size:0.75rem;color:var(--term-green);font-weight:700;">ENGINE-VERIFIED</span>
-            <button class="btn btn-secondary" onclick="copyPozKcl(${i},'${m.part_id || "POZ-"+(i+1)}')" style="padding:0.25rem 0.55rem;font-size:0.7rem;border-color:var(--term-cyan);color:var(--term-cyan);">COPY KCL</button>
-          </div>
-          <div class="code-editor" style="height:130px;font-size:0.8rem;line-height:1.4;color:var(--term-cyan);">${highlightKCL(kclRaw)}</div>
-        </div>
-      </div>` : ""}
-    </div>`;
+    const rp = recipeParts[i] || {};
+    const qty = m.qty || p.qty || 1;
+    const mass = (m.mass_grams || 0) * qty;
+    const matCost = (mass / 1000) * unitMatCost;
+    totalMatCost += matCost;
+    totalMass += mass;
+    const geom = m.shape === "cylinder"
+      ? `Ø${((m.geometry_mm?.L || 0) * 2).toFixed(0)} × ${m.geometry_mm?.H || 0}`
+      : `${m.geometry_mm?.L || 0} × ${m.geometry_mm?.W || 0} × ${m.geometry_mm?.H || 0}`;
+    return { poz: m.part_id, name: m.name || p.name, shape: m.shape, qty, geom, mass: (mass / 1000).toFixed(2), matCost: matCost.toFixed(2), process: rp.notes || p.process || "" };
   });
 
-  if (drawing) {
-    html += `<div class="antet-card" style="border-color:var(--term-amber);margin-top:0.75rem;">
-      <div class="antet-title" style="color:var(--term-amber);">2D TECHNICAL DRAWING (LOOP-GENERATED)</div>
-      <a href="${drawing.url}" target="_blank"><img src="${drawing.url}" alt="2D Drawing" style="max-width:100%;border:1px solid var(--term-border);border-radius:4px;"></a>
-    </div>`;
-  }
+  // ---- Build BOO rows ----
+  let totalLaborCost = 0;
+  const booRows = [];
+  const seenOps = new Set();
+  meas.forEach((m, i) => {
+    const p = props[i] || {};
+    const rp = recipeParts[i] || {};
+    const qty = m.qty || p.qty || 1;
+    const process = rp.notes || p.process || "laser-cut";
+    const opKey = process.split(" ")[0].toLowerCase();
+    const rate = opRates[opKey] || opRates["laser-cut"];
+    const time = rp.process_time_min || (recipeData.total_cycle_time_min || 5) / meas.length;
+    const opCost = (typeof rate.rate === "number") ? rate.rate * time * qty : rate.rate * qty;
+    totalLaborCost += opCost;
+    if (!seenOps.has(opKey)) {
+      seenOps.add(opKey);
+      booRows.push({ op: process, machine: opKey.toUpperCase(), rate: `${rate.rate} ${rate.unit}`, time: (time * qty).toFixed(1), cost: opCost.toFixed(2) });
+    }
+  });
+
+  const grandTotal = totalMatCost + totalLaborCost;
+
+  let html = `
+<div class="antet-card" style="border-color: var(--term-amber); margin-bottom: 0.75rem;">
+  <div class="antet-title" style="color: var(--term-amber);">📋 MANUFACTURING RECIPE</div>
+  <div class="antet-grid">
+    <div class="antet-item">Part: <strong>${escapeHtml(tb.part_name || "—")}</strong></div>
+    <div class="antet-item">DWG: <strong>${escapeHtml(tb.drawing_number || "—")}</strong></div>
+    <div class="antet-item">Material: <strong>${escapeHtml(material)}</strong> (${density} g/cm³)</div>
+    <div class="antet-item">Total Mass: <strong>${(totalMass / 1000).toFixed(2)} kg</strong></div>
+  </div>
+</div>
+
+<!-- KCL CODE -->
+<div class="antet-card" style="border-color: var(--term-cyan); margin-bottom: 0.75rem;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+    <div class="antet-title" style="color: var(--term-cyan); margin:0;">💻 KCL CODE</div>
+    <button class="btn btn-secondary" onclick="copyToClipboard('recipeKclCode')" style="padding:0.3rem 0.6rem; font-size:0.72rem; border-color:var(--term-cyan); color:var(--term-cyan);">📋 COPY ALL</button>
+  </div>
+  <div class="code-editor" id="recipeKclCode" style="height: 180px; font-size: 0.72rem; line-height: 1.4; color: var(--term-cyan);">${escapeHtml(allKcl || "// No KCL available")}</div>
+</div>
+
+<!-- BOM TABLE -->
+<div class="antet-card" style="border-color: var(--term-green); margin-bottom: 0.75rem;">
+  <div class="antet-title" style="color: var(--term-green);">📦 BILL OF MATERIALS (BOM)</div>
+  <table style="width:100%; border-collapse:collapse; font-size:0.75rem;">
+    <tr style="color:var(--term-cyan); text-align:left; border-bottom:1px solid var(--term-border);">
+      <th style="padding:0.4rem 0.5rem;">POZ</th><th>NAME</th><th>SHAPE</th><th>QTY</th><th>DIMENSIONS (mm)</th><th>UNIT MASS (kg)</th><th>MATERIAL COST (€)</th>
+    </tr>
+    ${bomRows.map(r => `
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+      <td style="padding:0.35rem 0.5rem; color:var(--term-cyan);">${r.poz}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${r.shape}</td>
+      <td>${r.qty}</td>
+      <td>${r.geom}</td>
+      <td>${r.mass}</td>
+      <td style="color:var(--term-amber);">${r.matCost}</td>
+    </tr>`).join("")}
+    <tr style="font-weight:700; border-top:2px solid var(--term-amber);">
+      <td colspan="5" style="padding:0.4rem 0.5rem; text-align:right; color:var(--text-dim);">TOTAL MATERIAL</td>
+      <td style="color:var(--term-green);">${(totalMass / 1000).toFixed(2)} kg</td>
+      <td style="color:var(--term-amber);">${totalMatCost.toFixed(2)} €</td>
+    </tr>
+  </table>
+</div>
+
+<!-- BOO TABLE -->
+<div class="antet-card" style="border-color: var(--term-amber); margin-bottom: 0.75rem;">
+  <div class="antet-title" style="color: var(--term-amber);">⚙️ BILL OF OPERATIONS (BOO)</div>
+  <table style="width:100%; border-collapse:collapse; font-size:0.75rem;">
+    <tr style="color:var(--term-cyan); text-align:left; border-bottom:1px solid var(--term-border);">
+      <th style="padding:0.4rem 0.5rem;">OPERATION</th><th>MACHINE</th><th>RATE</th><th>TIME (min)</th><th>COST (€)</th>
+    </tr>
+    ${booRows.map(r => `
+    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+      <td style="padding:0.35rem 0.5rem;">${r.op}</td>
+      <td>${r.machine}</td>
+      <td style="color:var(--text-dim);">${r.rate}</td>
+      <td>${r.time}</td>
+      <td style="color:var(--term-amber);">${r.cost}</td>
+    </tr>`).join("")}
+    <tr style="font-weight:700; border-top:2px solid var(--term-amber);">
+      <td colspan="4" style="padding:0.4rem 0.5rem; text-align:right; color:var(--text-dim);">TOTAL LABOR</td>
+      <td style="color:var(--term-amber);">${totalLaborCost.toFixed(2)} €</td>
+    </tr>
+  </table>
+</div>
+
+<!-- COST SUMMARY -->
+<div class="antet-card" style="border-color: var(--term-green);">
+  <div class="antet-title" style="color: var(--term-green);">💰 COST SUMMARY</div>
+  <div class="antet-grid">
+    <div class="antet-item">Material: <strong style="color:var(--term-amber);">${totalMatCost.toFixed(2)} €</strong></div>
+    <div class="antet-item">Labor: <strong style="color:var(--term-amber);">${totalLaborCost.toFixed(2)} €</strong></div>
+    <div class="antet-item">Overhead (15%): <strong style="color:var(--term-amber);">${(grandTotal * 0.15).toFixed(2)} €</strong></div>
+    <div class="antet-item">GRAND TOTAL: <strong style="color:var(--term-green); font-size:1.1rem;">${(grandTotal * 1.15).toFixed(2)} €</strong></div>
+  </div>
+  <div style="font-size:0.7rem; color:var(--text-dim); margin-top:0.5rem;">
+    Engine: ${meas[0]?.engine_real ? '✅ REAL Zoo Engine measurements' : '⚠️ Estimated (no API key)'} | ${meas.length} parts | ${state.iteration} iterations
+  </div>
+</div>`;
 
   container.innerHTML += html;
+}
+
+function copyToClipboard(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const text = el.textContent || el.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    streamLog("RECIPE", "KCL code copied to clipboard.");
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    streamLog("RECIPE", "KCL code copied to clipboard.");
+  });
 }
 
 function renderPositionsLoading() {
