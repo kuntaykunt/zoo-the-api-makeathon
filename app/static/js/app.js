@@ -298,6 +298,7 @@ function renderInferenceSummary(data) {
 
 function renderEvaluationGatekeeper(data) {
   const gatekeeperCard = document.getElementById("gatekeeperCard");
+  const submitAnswersBtn = document.getElementById("submitAnswersBtn");
   const questionsContainer = document.getElementById("questionsContainer");
   const evalStatusPill = document.getElementById("evalStatusPill");
 
@@ -344,6 +345,19 @@ function renderEvaluationGatekeeper(data) {
     }
 
     streamLog("HARNESS_LOOP", "[STEP 2/4] Audit Alert: Parameters missing. Requesting user input verification...");
+
+    // Ensure the questions live on currentEvalState so submitAnswers can read them
+    if (data.questions && data.questions.length > 0) {
+      currentEvalState = Object.assign({}, currentEvalState, { questions: data.questions });
+    }
+
+    // Make sure the confirm button is clickable in the missing-params branch
+    if (submitAnswersBtn) {
+      submitAnswersBtn.disabled = false;
+      submitAnswersBtn.classList.remove("disabled", "loading");
+      const sp = submitAnswersBtn.querySelector("span");
+      if (sp) sp.textContent = "✅ CONFIRM PARAMETERS & RUN ZOO AGENT API";
+    }
 
     let html = `<div style="font-size: 0.8rem; color: var(--term-amber); margin-bottom: 0.65rem;">
       [!] Confirm missing technical parameters to proceed:

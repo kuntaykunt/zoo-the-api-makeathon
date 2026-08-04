@@ -210,11 +210,57 @@ Rules:
         session.close()
 
         proposal = _extract_json(result["reply"])
+        if not proposal or not proposal.get("parts"):
+            proposal = self._bom_part_plan(s)
         self._trace(s, "engineer", "Zookeeper engineer proposal received", {
             "raw": result["reply"][:600],
             "proposal": proposal,
         })
         return proposal
+
+    def _bom_part_plan(self, s: dict) -> dict:
+        """Fallback part plan built from the Qwen classify_drawing BOM.
+
+        Used when the Zookeeper engineer returns no parseable JSON so the
+        engineering loop can still progress on assembly drawings.
+        """
+        verdict = s.get("classification") or {}
+        bom = verdict.get("bom") or []
+        target = s.get("target_bbox") or [400.0, 260.0, 100.0]
+        try:
+            thickness = float(s.get("thickness") or 2.0)
+        except (TypeError, ValueError):
+            thickness = 2.0
+
+        def _num(val, default):
+            try:
+                v = float(str(val).replace(",", ".").strip())
+                return v if v > 0 else default
+            except (TypeError, ValueError):
+                return default
+
+        parts = []
+        for i, entry in enumerate(bom, 1):
+            entry = entry if isinstance(entry, dict) else {}
+            poz = str(entry.get("poz") or entry.get("id") or f"POZ-{i:02d}").strip() or f"POZ-{i:02d}"
+            name = str(entry.get("name") or entry.get("description") or f"Part {i}").strip()
+            qty = int(_num(entry.get("qty") or entry.get("quantity") or 1, 1))
+            parts.append({
+                "id": poz,
+                "name": name,
+                "shape": "plate",
+                "L_mm": round(_num(entry.get("L_mm") or entry.get("length_mm"), float(target[0]) / 2.0), 2),
+                "W_mm": round(_num(entry.get("W_mm") or entry.get("width_mm"), float(target[1]) / 2.0), 2),
+                "T_mm": round(_num(entry.get("T_mm") or entry.get("thickness_mm"), thickness), 2),
+                "qty": max(1, qty),
+            })
+        if not parts:
+            return {}
+        return {
+            "parts": parts,
+            "assembly_bbox_mm": [float(target[0]), float(target[1]), float(target[2])],
+            "manufacturing_notes": "Fallback plan derived from Qwen OCR BOM; laser-cut plates, welded assembly.",
+        }
 
     def _write_kcl(self, s: dict) -> str:
         """Ask the Zoo KCL agent (Zookeeper edit_kcl_code tool) to write the
@@ -391,9 +437,16 @@ Return ONLY JSON:
         # Build the part plan (use Qwen BOM if assembly, else propose)
         proposal = self._propose(s)
         if not proposal or not proposal.get("parts"):
-            s["status"] = "error"
-            s["trace"].append({"iteration": s["iteration"], "event": "error", "detail": "No part plan from council/propose"})
-            return {"done": True, "error": "No part plan generated", "state": _json_safe(s)}
+            fb = self._bom_part_plan(s)
+            if fb.get("parts"):
+                proposal = fb
+                s["trace"].append({"iteration": s["iteration"], "event": "fallback",
+                                   "detail": f"Zookeeper returned no plan; using Qwen BOM fallback ({len(fb['parts'])} parts)",
+                                   "data": {"proposal": fb}})
+            else:
+                s["status"] = "error"
+                s["trace"].append({"iteration": s["iteration"], "event": "error", "detail": "No part plan from council/propose"})
+                return {"done": True, "error": "No part plan generated", "state": _json_safe(s)}
         s["proposal"] = proposal
         parts = proposal["parts"]
         # Concurrent Zookeeper sessions, one task per part
