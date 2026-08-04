@@ -1,20 +1,14 @@
-import os
 import re
 import io
-import time
-import base64
 import struct
 import requests
 from app.config import config
-
-STL_TMP_DIR = "app/static/renders"
 
 
 class ZooService:
     def __init__(self):
         self.api_key = config.ZOO_API_KEY
         self.base_url = config.ZOO_BASE_URL
-        os.makedirs(STL_TMP_DIR, exist_ok=True)
 
     @property
     def _has_key(self) -> bool:
@@ -192,12 +186,8 @@ class ZooService:
 
     def engine_prove(self, kcl_code: str, part_info: dict) -> dict:
         """
-        The REAL "KCL passes through the engine API" proof:
-          1. The synthesized KCL is parsed into the exact solid it defines.
-          2. That solid is meshed to STL and submitted to api.zoo.dev.
-          3. The Zoo Engine computes REAL volume, surface area, center of
-             mass, and mass (material density), and converts the solid to
-             STEP + glTF so the model can be opened / downloaded.
+        REAL KCL engine proof: parse KCL geometry → STL mesh → submit to Zoo Engine
+        for volume, surface area, center of mass, and mass computation.
         Every returned number is an actual engine response — no hardcoded values.
         """
         density_g_cm3 = self.material_density(part_info.get("material") or "St37-2")
@@ -205,7 +195,6 @@ class ZooService:
         stl = self._build_stl(geo)
 
         engine_real = False
-        files = {"step_url": None, "gltf_url": None}
         metrics = {
             "volume_cm3": round((geo["L_mm"] * geo["W_mm"] * geo["H_mm"]) / 1000.0, 3) if geo.get("kind") == "plate"
             else round((3.141592653589793 * (geo.get("radius_mm", 0) ** 2) * geo["H_mm"]) / 1000.0, 3),
@@ -216,7 +205,6 @@ class ZooService:
 
         if self._has_key:
             try:
-                # Real engine computations
                 vol_m3 = self._engine_metric("volume", stl)
                 sa_m2 = self._engine_metric("surface-area", stl)
                 com_m = self._engine_metric("center-of-mass", stl)
@@ -235,23 +223,6 @@ class ZooService:
                     "z": round(com_m.get("z", 0.0) * 1000.0, 2),
                 }
                 engine_real = True
-
-                # Real engine conversion to STEP + glTF (saved for download/view)
-                for ext, fmt in (("step", "step"), ("gltf", "gltf")):
-                    try:
-                        conv = self._post(f"/file/conversion/stl/{fmt}", {}, stl)
-                        out = conv.get("outputs") or {}
-                        for name, contents in out.items():
-                            if isinstance(contents, str):
-                                raw = self._b64decode_safe(contents)
-                                filename = f"kcl_model_{int(time.time())}.{ext}"
-                                filepath = os.path.join(STL_TMP_DIR, filename)
-                                with open(filepath, "wb") as f:
-                                    f.write(raw)
-                                files[f"{ext}_url"] = f"/static/renders/{filename}"
-                                break
-                    except Exception as conv_err:
-                        print(f"[ZooService] {fmt} conversion note: {conv_err}")
             except Exception as e:
                 print(f"[ZooService] Engine prove error: {e}")
                 engine_real = False
@@ -270,8 +241,7 @@ class ZooService:
             status = f"HTTP 201 OK (Zoo Engine API COMPILED + MEASURED - {user_info})"
             summary = (f"Zoo Engine compiled the KCL-defined solid and computed REAL geometry: "
                        f"V={metrics['volume_cm3']} cm3, A={metrics['surface_area_cm2']} cm2, "
-                       f"M={metrics['mass_grams']} g ({density_g_cm3} g/cm3 {part_info.get('material', 'material')}). "
-                       f"Model exported to STEP & glTF.")
+                       f"M={metrics['mass_grams']} g ({density_g_cm3} g/cm3 {part_info.get('material', 'material')}).")
         else:
             status = "SIMULATION MODE (ZOO_API_KEY missing) — geometry estimated locally"
             summary = "Engine prove skipped: configure ZOO_API_KEY to run real engine computations."
@@ -289,12 +259,10 @@ class ZooService:
             "material_density_g_cm3": density_g_cm3,
             "bounding_box_mm": {"x": geo["L_mm"], "y": geo["W_mm"], "z": geo["H_mm"]},
             "center_of_mass_mm": metrics["center_of_mass_mm"],
-            "engine_files": files,
         }
 
     def _run_engine_metrics(self, stl: bytes, material: str, density_g_cm3: float) -> dict:
-        """Runs the real Zoo Engine metric set + converts to STEP/glTF. Shared by both
-        KCL-parse and raw-part pathways."""
+        """Runs the real Zoo Engine metric set (volume, surface-area, mass, center-of-mass)."""
         result = {"engine_real": False, "metrics": None}
 
         if not self._has_key:
@@ -320,21 +288,6 @@ class ZooService:
                 },
             }
             result["engine_real"] = True
-            for ext, fmt in (("step", "step"), ("gltf", "gltf")):
-                try:
-                    conv = self._post(f"/file/conversion/stl/{fmt}", {}, stl)
-                    out = conv.get("outputs") or {}
-                    for name, contents in out.items():
-                        if isinstance(contents, str):
-                            raw = self._b64decode_safe(contents)
-                            filename = f"kcl_model_{int(time.time())}_{fmt}.{ext}"
-                            filepath = os.path.join(STL_TMP_DIR, filename)
-                            with open(filepath, "wb") as f:
-                                f.write(raw)
-                            result["metrics"][f"{ext}_url"] = f"/static/renders/{filename}"
-                            break
-                except Exception as conv_err:
-                    print(f"[ZooService] {fmt} conversion note: {conv_err}")
         except Exception as e:
             print(f"[ZooService] engine metrics error: {e}")
             result["engine_real"] = False
@@ -344,7 +297,7 @@ class ZooService:
         """
         Run the REAL engine proof for a single proposed part (used by the agentic
         engineering loop). part carries {id, shape, L_mm, W_mm, T_mm (plate) or
-        radius_mm, T_mm (cylinder)}. Returns measured volume/surface/mass + files.
+        radius_mm, T_mm (cylinder)}. Returns measured volume/surface/mass.
         """
         density_g_cm3 = self.material_density(material or "St37-2")
         shape = part.get("shape", "plate")
@@ -378,8 +331,6 @@ class ZooService:
             "mass_grams": metrics["mass_grams"],
             "mass_kg": round(metrics["mass_grams"] / 1000.0, 4),
             "center_of_mass_mm": metrics["center_of_mass_mm"],
-            "step_url": metrics.get("step_url"),
-            "gltf_url": metrics.get("gltf_url"),
         }
 
     def _estimate_metrics(self, geo: dict) -> dict:
@@ -395,20 +346,9 @@ class ZooService:
             "center_of_mass_mm": {"x": 0.0, "y": 0.0, "z": 0.0},
         }
 
-    def _b64decode_raw(self, contents: str) -> bytes:
-        return self._b64decode_safe(contents)
-
     def verify_geometry_readiness(self, kcl_code: str, part_info: dict = None) -> dict:
         """Backward-compatible wrapper performing the real engine proof."""
         return self.engine_prove(kcl_code, part_info or {})
-
-    def compile_kcl(self, kcl_code: str, part_info: dict = None, output_format: str = "gltf") -> dict:
-        return self.engine_prove(kcl_code, part_info or {})
-
-    def _b64decode_safe(self, contents: str) -> bytes:
-        cleaned = "".join(ch for ch in contents if ch not in " \t\r\n")
-        cleaned += "=" * (-len(cleaned) % 4)
-        return base64.b64decode(cleaned)
 
     def material_density(self, material: str) -> float:
         m = material.lower().strip()

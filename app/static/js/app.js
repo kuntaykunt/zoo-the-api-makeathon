@@ -156,8 +156,8 @@ async function handleFileUpload(file) {
 
   if (resetBtn) resetBtn.style.display = "none";
 
-  streamLog("HARNESS_LOOP", "[STEP 1/4] Normalizing image buffer & executing Qwen-VL Vision Inspection...");
-  streamLog("QWEN_VL_AGENT", `POST /api/upload-drawing -> Transmitting '${file.name}' to Qwen-VL Vision API...`);
+  streamLog("HARNESS_LOOP", "[STEP 1/3] Uploading drawing & extracting title block...");
+  streamLog("UPLOAD", `POST /api/upload-drawing -> Transmitting '${file.name}' to Zoo API...`);
 
   // Show loading state
   if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add("loading"); }
@@ -180,28 +180,41 @@ async function handleFileUpload(file) {
     currentPartName = data.title_block?.part_name || data.part_name || file.name.split('.')[0];
 
     if (data.error) {
-      streamLog("QWEN_ERROR", data.message);
-    } else if (data.raw_qwen_response) {
-      streamLog("QWEN_VL_RESPONSE", data.raw_qwen_response);
+      streamLog("ERROR", data.message);
     }
 
-    streamLog("QWEN_VL_AGENT", `Analysis Complete -> Scanned Part Title: '${currentPartName}' (DWG: ${data.title_block?.drawing_number || 'N/A'}).`);
-
-    if (data.agentic_trace) {
-      data.agentic_trace.forEach(logMsg => streamLog("AGENT_TRACE", logMsg));
-    }
+    streamLog("UPLOAD", `Title block extracted: '${currentPartName}' (DWG: ${data.title_block?.drawing_number || 'N/A'}).`);
+    streamLog("HARNESS_LOOP", "[STEP 2/3] Drawing ready — Zoo Agent will inspect geometry, BOM, and write KCL per part.");
 
     renderTitleBlock(data.title_block || {});
-    renderEvaluationGatekeeper(data);
     renderInferenceSummary(data);
+
+    // NEW FLOW: Skip Qwen questions, show engineering loop directly
+    showLoopCard();
 
   } catch (err) {
     console.error(err);
-    streamLog("ERROR", `Drawing inspection failure: ${err.message}`);
-    alert("Error inspecting drawing: " + err.message);
+    streamLog("ERROR", `Drawing upload failure: ${err.message}`);
+    alert("Error uploading drawing: " + err.message);
   } finally {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove("loading"); }
   }
+}
+
+function showLoopCard() {
+  // Hide gatekeeper (Qwen questions) — we go straight to Zoo Agent
+  const gatekeeperCard = document.getElementById("gatekeeperCard");
+  if (gatekeeperCard) gatekeeperCard.style.display = "none";
+  const submitAnswersBtn = document.getElementById("submitAnswersBtn");
+  if (submitAnswersBtn) submitAnswersBtn.style.display = "none";
+
+  // Show engineering loop card
+  const loopCard = document.getElementById("loopCard");
+  if (loopCard) loopCard.style.display = "block";
+  const loopBtn = document.getElementById("loopBtn");
+  if (loopBtn) { loopBtn.disabled = false; loopBtn.classList.remove("disabled", "loading"); }
+
+  streamLog("HARNESS_LOOP", "[STEP 3/3] Ready — click 'RUN ENGINEERING LOOP' to start Zoo Agent inspection.");
 }
 
 function resetFileUpload() {
@@ -480,15 +493,6 @@ function renderEngineProof(zv) {
   const statusText = real ? "REAL ENGINE MEASUREMENT" : "SIMULATED (ZOO_API_KEY required)";
 
   const bbox = zv.bounding_box_mm || {};
-  const files = zv.engine_files || {};
-
-  let fileLinks = "";
-  if (files.step_url || files.gltf_url) {
-    fileLinks = `<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.6rem;">
-      ${files.step_url ? `<a class="btn btn-secondary" style="padding:0.35rem 0.7rem; font-size:0.72rem; border-color:var(--term-cyan); color:var(--term-cyan); text-decoration:none;" href="${files.step_url}" download>⬇️ DOWNLOAD STEP</a>` : ""}
-      ${files.gltf_url ? `<a class="btn btn-secondary" style="padding:0.35rem 0.7rem; font-size:0.72rem; border-color:var(--term-amber); color:var(--term-amber); text-decoration:none;" href="${files.gltf_url}" download>⬇️ DOWNLOAD glTF</a>` : ""}
-    </div>`;
-  }
 
   box.insertAdjacentHTML("beforeend", `
     <div class="antet-card" style="border-color: ${statusColor}; margin-top: 0.75rem;">
@@ -502,7 +506,6 @@ function renderEngineProof(zv) {
         <div class="antet-item">Bounding Box: <strong>${bbox.x ?? "—"} × ${bbox.y ?? "—"} × ${bbox.z ?? "—"} mm</strong></div>
         <div class="antet-item">Center of Mass: <strong>${zv.center_of_mass_mm ? `${zv.center_of_mass_mm.x}, ${zv.center_of_mass_mm.y}, ${zv.center_of_mass_mm.z}` : "—"} mm</strong></div>
       </div>
-      ${fileLinks}
     </div>
   `);
 }
@@ -576,7 +579,6 @@ function renderEngineeringFinal(state) {
   const container = document.getElementById("positionsContainer");
   if (!container) return;
 
-  // Save loop results for Manufacturing Review to reuse
   loopResults = state;
 
   const meas = state.measurements || [];
@@ -584,16 +586,8 @@ function renderEngineeringFinal(state) {
   const target = (state.critic?.target_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
   const measured = (state.critic?.measured_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
   const errs = Object.entries(state.critic?.errors || {}).map(([d, e]) => `${d}: ${e}%`).join("  ");
-  const drawing = (state.drawings && state.drawings[0]) || null;
-  const kclCode = (state.proposal?.parts && state.proposal.parts[0]?.kcl_code) || state.kcl_code || "";
-
-  const kclRow = kclCode ? `
-    <div style="margin-top: 0.75rem;">
-      <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.4rem;">
-        💻 AUTHENTIC KCL — WRITTEN & APPROVED BY THE ZOO KCL AGENT (Zookeeper edit_kcl_code)
-      </div>
-      <div class="code-editor" style="height: 200px; font-size: 0.75rem; line-height: 1.4; color: var(--term-cyan); margin-bottom: 0.5rem;">${escapeHtml(kclCode)}</div>
-    </div>` : "";
+  const recipe = state.recipe || {};
+  const kclFiles = state.kcl_files || {};
 
   const rows = meas.map((m, i) => {
     const p = props[i] || {};
@@ -615,12 +609,66 @@ function renderEngineeringFinal(state) {
       </tr>`;
   }).join("");
 
+  // KCL files summary - show actual code
+  const kclFilesList = Object.keys(kclFiles).length > 0
+    ? `<div style="margin-top: 0.75rem;">
+         <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-cyan); margin-bottom: 0.4rem;">
+           💻 KCL FILES — WRITTEN BY ZOO AGENT (edit_kcl_code)
+         </div>
+         ${Object.entries(kclFiles).map(([name, src]) => `
+           <div style="margin-bottom: 0.5rem;">
+             <div style="font-size: 0.72rem; color: var(--term-amber); margin-bottom: 0.2rem;">📁 ${escapeHtml(name)}</div>
+             <div class="code-editor" style="height: 120px; font-size: 0.72rem; line-height: 1.4; color: var(--term-cyan);">${escapeHtml(typeof src === 'string' ? src : '')}</div>
+           </div>`).join("")}
+       </div>`
+    : `<div style="margin-top: 0.5rem; font-size: 0.72rem; color: var(--text-dim);">📁 No KCL files generated</div>`;
+
+  // Recipe section from Qwen
+  let recipeHtml = "";
+  if (recipe && !recipe.error) {
+    const r = recipe.recipe || {};
+    const parts = recipe.parts || [];
+    recipeHtml = `
+      <div class="antet-card" style="border-color: var(--term-amber); margin-top: 0.75rem;">
+        <div class="antet-title" style="color: var(--term-amber);">🧪 MANUFACTURING RECIPE — RECIPE ENGINEER</div>
+        <div style="font-size: 0.75rem; color: var(--text-main); margin-bottom: 0.5rem;">${escapeHtml(recipe.summary || "")}</div>
+        <div class="antet-grid">
+          <div class="antet-item">Total Paint: <strong>${r.total_paint_liters ?? "—"} L</strong></div>
+          <div class="antet-item">Total Cut Length: <strong>${r.total_cut_length_mm ?? "—"} mm</strong></div>
+          <div class="antet-item">Total Cycle Time: <strong>${r.total_cycle_time_min ?? "—"} min</strong></div>
+          <div class="antet-item">Cost: <strong>${r.cost_estimate?.total || "—"}</strong></div>
+        </div>
+        ${r.assembly_sequence ? `
+        <div style="margin-top: 0.5rem; font-size: 0.72rem; color: var(--text-dim);">
+          🔧 Assembly Sequence: ${r.assembly_sequence.map(s => `<div style="color:var(--text-main);">${escapeHtml(s)}</div>`).join("")}
+        </div>` : ""}
+        ${parts.length > 0 ? `
+        <div style="margin-top: 0.5rem; font-size: 0.72rem; color: var(--text-dim);">
+          📋 Per-Part Recipe:
+          ${parts.map(p => `
+            <div style="background:rgba(0,0,0,0.3); padding:0.4rem; margin-top:0.3rem; border-left:2px solid var(--term-cyan);">
+              <strong style="color:var(--term-cyan);">${escapeHtml(p.poz)}</strong> —
+              Paint: ${p.paint_required_liters ?? 0} L |
+              Cut: ${p.cut_length_mm ?? 0} mm |
+              Bends: ${p.bend_count ?? 0} |
+              Time: ${p.process_time_min ?? 0} min
+              ${p.notes ? `<div style="color:var(--text-dim);">${escapeHtml(p.notes)}</div>` : ""}
+            </div>`).join("")}
+        </div>` : ""}
+      </div>`;
+  } else if (recipe && recipe.error) {
+    recipeHtml = `
+      <div class="antet-card" style="border-color: var(--term-amber); margin-top: 0.75rem;">
+        <div class="antet-title" style="color: var(--term-amber);">⚠️ RECIPE GENERATION NOTE</div>
+        <div style="font-size: 0.75rem; color: var(--text-dim);">${escapeHtml(recipe.error)}</div>
+      </div>`;
+  }
+
   container.innerHTML = `
     <div class="antet-card" style="border-color: var(--term-green);">
-      <div class="antet-title" style="color: var(--term-green);">✅ AGENTIC ENGINEERING LOOP CONVERGED — DRAWING ENVELOPE REPRODUCED</div>
+      <div class="antet-title" style="color: var(--term-green);">✅ ENGINEERING LOOP COMPLETE — 3-STAGE PIPELINE</div>
       <div style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.6rem;">
-        Zookeeper engineer proposal -> Zoo Engine measured every part for real -> critic confirmed the
-        assembly bbox after ${state.iteration} iteration(s).
+        Zoo Agent inspected → Engine proved → Qwen recipe generated after ${state.iteration} iteration(s).
       </div>
       <div class="antet-grid">
         <div class="antet-item">Target Envelope: <strong>${target}</strong> mm</div>
@@ -637,15 +685,9 @@ function renderEngineeringFinal(state) {
         </tr>
         ${rows}
       </table>
-      ${kclRow}
-      ${drawing ? `
-        <div style="margin-top: 0.75rem;">
-          <div style="font-size: 0.75rem; font-weight: 700; color: var(--term-amber); margin-bottom: 0.4rem;">📐 GENERATED 2D TECHNICAL DRAWING (FINAL)</div>
-          <a href="${drawing.url}" target="_blank">
-            <img src="${drawing.url}" alt="2D Technical Drawing" style="max-width: 100%; border: 1px solid var(--term-border); border-radius: 4px;">
-          </a>
-        </div>` : ""}
+      ${kclFilesList}
     </div>
+    ${recipeHtml}
   `;
 }
 
@@ -776,18 +818,15 @@ function hideProcessingOverlay() {
 }
 
 function updateStageUI(state) {
-  const stages = state.stages || ["QWEN OCR + VERDICT", "ZOOKEEPER COUNCIL (briefing)", "PARALLEL PART TASKS", "COUNCIL REVIEW", "ENGINE API KCL SYNTHESIS", "KCL DEBUG / VERIFY LOOP"];
+  const stages = state.stages || ["ZOO AGENT INSPECTION", "ZOO ENGINE PROVE + DEBUG", "RECIPE ENGINEER"];
   const idx = (typeof state.stage_index === "number") ? state.stage_index : 0;
   const stageName = state.stage || "init";
   let overlayText = "PROCESSING";
   let overlaySub = "";
-  if (stageName === "qwen") { overlayText = "QWEN OCR + VERDICT"; overlaySub = "Classifying drawing: single | assembly | non-manufacturable"; }
-  else if (stageName === "council") { overlayText = "ZOOKEEPER COUNCIL"; overlaySub = "Briefing: part count, mass & volume targets"; }
-  else if (stageName === "parallel") { overlayText = "PARALLEL PART TASKS"; overlaySub = "Zoo Agent designing each POZ concurrently"; }
-  else if (stageName === "review") { overlayText = "COUNCIL REVIEW"; overlaySub = "Cross-checking BOM + engine measurements"; }
-  else if (stageName === "kcl") { overlayText = "ENGINE API KCL SYNTHESIS"; overlaySub = "Writing assembly KCL script"; }
-  else if (stageName === "debug") { overlayText = "KCL DEBUG / VERIFY"; overlaySub = "Compiling & debugging KCL via engine"; }
-  else if (stageName === "done") { overlayText = "COMPLETE"; overlaySub = "Engineering loop finished"; }
+  if (stageName === "inspect") { overlayText = "ZOO AGENT INSPECTION"; overlaySub = "Inspecting drawing, extracting BOM, writing KCL per part"; }
+  else if (stageName === "engine") { overlayText = "ZOO ENGINE PROVE + DEBUG"; overlaySub = "Measuring every part, constraint check, envelope matching"; }
+  else if (stageName === "recipe") { overlayText = "RECIPE ENGINEER"; overlaySub = "Generating manufacturing recipe: paint, cut, bend, weld, assemble"; }
+  else if (stageName === "done") { overlayText = "COMPLETE"; overlaySub = "Engineering loop finished — recipe ready"; }
   showProcessingOverlay(overlayText, overlaySub);
 
   // Stepper
@@ -843,11 +882,11 @@ async function handleExplodeAssembly() {
     streamLog("MFG_REVIEW", "Reusing engineering loop results (no new API call)...");
     const meas = loopResults.measurements || [];
     const props = (loopResults.proposal && loopResults.proposal.parts) || [];
-    const kclCode = (loopResults.proposal?.parts && loopResults.proposal.parts[0]?.kcl_code) || loopResults.kcl_code || "";
+    const kclFiles = loopResults.kcl_files || {};
 
     setTimeout(() => {
-      renderManufacturingReviewFromLoop(meas, props, kclCode, loopResults);
-      streamLog("MFG_REVIEW", `Manufacturing Review rendered from ${meas.length} loop-verified positions.`);
+      renderManufacturingReviewFromLoop(meas, props, kclFiles, loopResults);
+      streamLog("MFG_REVIEW", `Manufacturing Review appended below recipe.`);
       if (explodeBtn) { explodeBtn.disabled = false; explodeBtn.classList.remove("loading"); }
     }, 400);
     return;
@@ -880,10 +919,12 @@ async function handleExplodeAssembly() {
   }
 }
 
-function renderManufacturingReviewFromLoop(meas, props, kclCode, state) {
+function renderManufacturingReviewFromLoop(meas, props, kclFiles, state) {
   const container = document.getElementById("positionsContainer");
   if (!container) return;
 
+  const kclCode = (typeof kclFiles === 'object' && Object.keys(kclFiles).length > 0)
+    ? Object.values(kclFiles)[0] : "";
   const target = (state.critic?.target_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
   const measured = (state.critic?.measured_bbox || []).map(x => Number(x).toFixed(0)).join(" × ");
   const errs = Object.entries(state.critic?.errors || {}).map(([d, e]) => `${d}: ${e}%`).join("  ");
@@ -950,7 +991,7 @@ function renderManufacturingReviewFromLoop(meas, props, kclCode, state) {
     </div>`;
   }
 
-  container.innerHTML = html;
+  container.innerHTML += html;
 }
 
 function renderPositionsLoading() {
